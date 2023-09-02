@@ -5,7 +5,7 @@ project(hx-20-crt)
 find_package(PkgConfig)
 find_package(Boost COMPONENTS program_options REQUIRED )
 
-pkg_check_modules(GTKMM gtkmm-2.4 IMPORTED_TARGET)
+find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets )
 
 add_compile_options(-Wall)
 

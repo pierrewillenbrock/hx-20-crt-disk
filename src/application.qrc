@@ -1,0 +1,9 @@
+
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource>
+    <file alias="16/disk_active.png">images/16/disk_active.png</file>
+    <file alias="16/disk_inactive.png">images/16/disk_inactive.png</file>
+    <file alias="32/disk_active.png">images/32/disk_active.png</file>
+    <file alias="32/disk_inactive.png">images/32/disk_inactive.png</file>
+</qresource>
+</RCC>

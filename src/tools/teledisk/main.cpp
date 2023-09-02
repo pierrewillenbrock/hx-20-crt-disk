@@ -101,7 +101,7 @@ int main(int argc, char **argv) {
                     for(unsigned int s = disk.min.idSector;
                             s <= disk.max.idSector; s++) {
                         TeleDiskParser::Sector *se = disk.findSector(TeleDiskParser::CHS(c,h,s));
-                        if(se->data) {
+                        if(!se->data.empty()) {
                             if(verbose)
                                 printf("dumping CHS %d/%d/%d\n",
                                        se->chs.idCylinder,se->chs.idSide,se->chs.idSector);
@@ -110,7 +110,7 @@ int main(int argc, char **argv) {
                               se->chs.idSide)*16+
                              (se->chs.idSector-1))*256
                             );
-                            of.write(se->data,256);
+                            of.write(se->data.data(),256);
                         } else {
                             if(verbose)
                                 printf("no data at CHS %d/%d/%d\n",
@@ -125,9 +125,9 @@ int main(int argc, char **argv) {
             //first, copy all of it into continuous ram for easy access
             for(unsigned int sect = 1; sect <= 8; sect++) {
                 TeleDiskParser::Sector *s = disk.findSector(TeleDiskParser::CHS(4,0,sect));
-                if(s->data)
+                if(!s->data.empty())
                     memcpy(((char *)directory)+(sect-1)*256,
-                           s->data,
+                           s->data.data(),
                            256);
             }
         }
@@ -178,14 +178,14 @@ int main(int argc, char **argv) {
                           << ((directory[i].type[1] & 0x80)?"yes":"no")
                           << "\n";
                 std::cerr << "  size:      "
-                          << (unsigned int)directory[i].rc
+                          << (unsigned int)(directory[i].rc + (directory[i].ex & 1)*8)
                           << " records (referenced in this entry)\n";
                 std::cerr << "  extent num:"
-                          << (unsigned int)directory[i].ex
+                          << ((unsigned int)directory[i].ex >> 1)
                           << "\n";
                 if(verbose) {
                     std::cerr << "  blocks:   ";
-                    for(unsigned int j = 0; j < (unsigned int)((directory[i].rc+15)/16); j++) {
+                    for(unsigned int j = 0; j < (unsigned int)((directory[i].rc+15)/16 + (directory[i].ex & 1)*8); j++) {
                         std::cerr << " " << (unsigned int)directory[i].block[j];
                     }
                     std::cerr << "\n";
@@ -216,27 +216,13 @@ int main(int argc, char **argv) {
 
                     //directory is at 0x8000, 0x800 bytes
                     //block 1 is at offset 0x8800
-                    //we have data at
-                    //0x8800-0x8900, (0x100 bytes, in block 1; 2 records at 0x80 per record)
-                    //0x9000-0xa400, (0x1400 bytes, in block 2,3,4; 40 records at 0x80 per record)
-                    //0xa800-0xb400, (0x0c00 bytes, in block 5,6; 24 records at 0x80 per record)
-                    //   this actually has been changed, because there is an interesting
-                    //   break at 0xb080, makes this
-                    //               (0x0880 bytes, in block 5,6; 17 records at 0x80 per record)
-                    //0xb800-0xbb00  (0x0300 bytes, in block 7; 6 records at 0x80 per record)
-                    //we have files at
-                    //block 1 (2 records)
-                    //block 2,3,4 (39 records)
-                    //block 5,6 (17 records)
-                    //block 7 (6 records)
-                    //no, 2k blocks at 8 sectors, 16 records
-                    for(unsigned int j = 0; j < (unsigned int)((directory[i].rc+15)/16); j++) {
+                    for(unsigned int j = 0; j < (unsigned int)((directory[i].rc+15)/16 + (directory[i].ex & 1)*8); j++) {
                         TeleDiskParser::CHS cur = data_space_base.advanceSHC(
                                                   (directory[i].block[j]-1) * 8,
                                                   disk.min, disk.max);
                         unsigned int num_sects = 8;
                         unsigned int last_sect_records = 2;
-                        if(j == (unsigned int)((directory[i].rc-1)/16)) {
+                        if(j == (unsigned int)((directory[i].rc-1)/16+(directory[i].ex & 1)*8)) {
                             num_sects = ((directory[i].rc % 16)+1)/2;
                             last_sect_records = directory[i].rc % 2;
                             if(last_sect_records == 0)
@@ -250,8 +236,8 @@ int main(int argc, char **argv) {
                             unsigned int bytes = 256;
                             if(k == num_sects-1)
                                 bytes = last_sect_records * 128;
-                            if(se->data) {
-                                of.write(se->data,bytes);
+                            if(!se->data.empty()) {
+                                of.write(se->data.data(),bytes);
                             } else {
                                 char buf[256];
                                 memset(buf, 0xe5, 256);

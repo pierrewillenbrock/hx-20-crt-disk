@@ -8,6 +8,14 @@ namespace TeleDiskParser {
 
 class Disk;
 
+class FormatError : public std::runtime_error {
+public:
+    explicit FormatError(const std::string& __arg) : std::runtime_error(__arg) {}
+    explicit FormatError(const char*__arg) : std::runtime_error(__arg) {}
+    FormatError(FormatError&&oth) noexcept : std::runtime_error(oth) {}
+    FormatError(const FormatError&) noexcept = default;
+};
+
 struct CHS {
     unsigned int idCylinder;
     unsigned int idSide;
@@ -49,13 +57,13 @@ public:
     };
     CHS chs;
     unsigned int idLengthCode;
-    unsigned int size;//2^idLengthCode * 128
     SectorFlags flags;
-    char *data;
+    std::vector<char> data;
 public:
     Sector(std::basic_istream<char> &s);
     Sector(Sector const &s);
-    ~Sector();
+    Sector();
+    void write(std::basic_ostream<char> &s);
 };
 
 class Track {
@@ -68,6 +76,8 @@ public:
     std::vector<Sector> sectors;
 public:
     Track(std::basic_istream<char> &s);
+    Track();
+    void write(std::basic_ostream<char> &s);
 };
 
 class Comment {
@@ -79,6 +89,8 @@ public:
     std::string comment;
 public:
     Comment(std::basic_istream<char> &s);
+    Comment();
+    void write(std::basic_ostream<char> &s);
 };
 
 class Disk {
@@ -116,10 +128,15 @@ public:
     CHS max;
 private:
     void readDisk(std::basic_istream<char> &s);
+    void writeDisk(std::basic_ostream<char> &s);
 public:
     Disk(const char *filename);
     Disk(std::basic_istream<char> &s);
+    Disk();
+    void write(const char *filename);
+    void write(std::basic_ostream<char> &s);
     Sector *findSector(CHS const &chs);
+    Track *findTrack(unsigned int physCylinder, unsigned int physSide, bool create=false);
 };
 }
 

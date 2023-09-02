@@ -1,4 +1,8 @@
 
+#pragma once
+
+#include "hx20-crt-dev.hpp"
+
 static const struct HX20CrtDevice::Character defaultCharacters[256] = {
     {{}},//0x00
     {{}},//0x01

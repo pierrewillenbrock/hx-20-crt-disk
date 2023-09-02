@@ -1,6 +1,14 @@
 
 #pragma once
 
+/*
+ * CRC16:
+ * polynomial: 0xA097
+ * initial: 0
+ * final xor: 0
+ * no reflections
+ */
+
 struct FileHeader {
     char ID[2];//TD or td(for "advanced compression")
     unsigned char volSeq;//volume number of this file in the sequence
@@ -29,7 +37,7 @@ struct TrackHeader {
     unsigned char sectorCount;
     unsigned char physCylinder;
     unsigned char physSide;
-    unsigned char crc;
+    unsigned char crc; //this is the low 8 bits of the crc16 over the previous 3 bytes
 } __attribute__((packed));
 
 struct SectorHeader {
@@ -38,6 +46,6 @@ struct SectorHeader {
     unsigned char idSector;
     unsigned char idLengthCode;//size=128*2^idLengthCode
     unsigned char flags;//bit0: dupe, bit1: data crc error, bit2:deleted mark, bit4: dos sector missing, bit5: data missing, id missing
-    unsigned char crc;
+    unsigned char crc;//crc of final sector data
 } __attribute__((packed));
 

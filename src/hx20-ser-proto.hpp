@@ -2,8 +2,10 @@
 #pragma once
 
 #include <stdint.h>
-#include <map>
+#include <unordered_map>
+#include <unordered_set>
 #include <system_error>
+#include <vector>
 
 struct pollfd;
 class HX20SerialConnection;
@@ -21,6 +23,7 @@ public:
 class HX20SerialDevice {
 protected:
     virtual int getDeviceID() const = 0;
+    virtual ~HX20SerialDevice() = 0;
     virtual
     __attribute__((warn_unused_result))
     int gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
@@ -30,25 +33,53 @@ protected:
     friend class HX20SerialConnection;
 };
 
+class HX20SerialMonitor {
+public:
+    enum InputPacketState {
+        GotUnassociated,
+        GotPacketHeaderRequest,
+        GotPacketTextRequest,
+        GotSelectRequest,
+        GotReverseDirection,
+        GotPacketHeaderResponse,
+        GotPacketTextResponse
+    };
+    enum OutputPacketState {
+        SentPacketHeaderRequest,
+        SentPacketTextRequest,
+        SentPacketHeaderResponse,
+        SentPacketTextResponse,
+        SentSelectResponse,
+        SentReverseDirection
+    };
+protected:
+    virtual ~HX20SerialMonitor();
+
+    virtual void monitorInput(InputPacketState state,
+                              std::vector<uint8_t> const &bytes) {}
+    virtual void monitorOutput(OutputPacketState state,
+                               std::vector<uint8_t> const &bytes) {}
+
+    friend class HX20SerialConnection;
+};
+
 class HX20SerialConnection {
 private:
     enum State {
-        Disconnected,
-        Select,
         NoHeader,
+        Select,
         Header,
         HaveHeader,
         Text
     };
     int fd;
 
-    std::map<int, HX20SerialDevice *> devices;
+    std::unordered_map<int, HX20SerialDevice *> devices;
+    std::unordered_multiset<HX20SerialMonitor *> monitors;
 
     enum State state;
 
-    uint8_t *buf;
-    int buf_size;
-    int buf_pos;
+    std::vector<uint8_t> buf;
     void addByteToBuf(uint8_t b);
     uint8_t checkSumBuf();
 
@@ -74,6 +105,8 @@ public:
 
     void registerDevice(HX20SerialDevice *dev);
     void unregisterDevice(HX20SerialDevice *dev);
+    void registerMonitor(HX20SerialMonitor* mon);
+    void unregisterMonitor(HX20SerialMonitor* mon);
 
     __attribute__((warn_unused_result))
     int sendPacket(uint16_t sid, uint16_t did, uint8_t fnc,

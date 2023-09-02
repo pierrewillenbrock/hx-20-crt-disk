@@ -1,104 +1,66 @@
 
-#include <gtkmm.h>
-#include <poll.h>
+#include <QApplication>
+#include <QCommandLineParser>
+#include <QCommandLineOption>
 
-#include "hx20-ser-proto.hpp"
-#include "hx20-crt-dev.hpp"
-#include "hx20-disk-dev.hpp"
-
-struct Conn {
-    HX20SerialConnection *conn;
-    struct pollfd *pfd;
-
-    bool
-    handle_input(Glib::IOCondition cond) {
-        pfd->revents = 0;
-
-        if(cond & Glib::IO_IN)
-            pfd->revents |= POLLIN;
-        if(cond & Glib::IO_OUT)
-            pfd->revents |= POLLOUT;
-        if(cond & Glib::IO_PRI)
-            pfd->revents |= POLLPRI;
-        if(cond & Glib::IO_ERR)
-            pfd->revents |= POLLERR;
-        if(cond & Glib::IO_HUP)
-            pfd->revents |= POLLHUP;
-        if(cond & Glib::IO_NVAL)
-            pfd->revents |= POLLNVAL;
-
-        if(conn->handleEvents(pfd, 1) < 0) {
-            //TODO output a message?
-            Gtk::Main::quit();
-            return false;
-        }
-        return true;
-    }
-};
-
-bool
-delete_event(GdkEventAny *event) {
-    Gtk::Main::quit();
-    return false;
-}
+#include "mainwindow.hpp"
 
 int main(int argc, char **argv) {
-    Gtk::Main kit(argc, argv);
+//    Q_INIT_RESOURCE(application);
+#ifdef Q_OS_ANDROID
+    QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+#endif
 
-    /*****************************************************************************/
-    /* create a new window */
-    Gtk::Window window(Gtk::WINDOW_TOPLEVEL);
-
-    window.signal_delete_event().connect(sigc::ptr_fun(&delete_event));
-
-    window.set_title("");
-
-    HX20CrtDevice crt_dev;
-    HX20DiskDevice disk_dev;
-
-    HX20SerialConnection conn("/dev/ttyUSB4");
-    conn.registerDevice(&crt_dev);
-    conn.registerDevice(&disk_dev);
-
-    int nfds = conn.getNfds();
-    struct pollfd *pfd = (struct pollfd *)malloc(nfds * sizeof(struct pollfd));
-    conn.fillPollFd(pfd);
-
-    int i;
-    for(i = 0; i < nfds; i++) {
-        struct Conn *c = new Conn();
-        Glib::IOCondition cond = (Glib::IOCondition)0;
-        if(pfd[i].events & POLLIN)
-            cond |= Glib::IO_IN;
-        if(pfd[i].events & POLLOUT)
-            cond |= Glib::IO_OUT;
-        if(pfd[i].events & POLLPRI)
-            cond |= Glib::IO_PRI;
-        if(pfd[i].events & POLLERR)
-            cond |= Glib::IO_ERR;
-        if(pfd[i].events & POLLHUP)
-            cond |= Glib::IO_HUP;
-        if(pfd[i].events & POLLNVAL)
-            cond |= Glib::IO_NVAL;
-        c->conn = &conn;
-        c->pfd = pfd+i;
-        Glib::signal_io().connect(
-        sigc::mem_fun(*c, &Conn::handle_input),
-        pfd[i].fd,
-        cond);
-    }
-
-    Gtk::HBox hbox(false, 0);
-
-    hbox.pack_start(crt_dev.getWidget(), true, true, 0);
-
-    window.add(hbox);
+    QApplication app(argc, argv);
+    QCoreApplication::setOrganizationName("Pirsoft.de");
+    QCoreApplication::setOrganizationDomain("pirsoft.de");
+    QCoreApplication::setApplicationName("EPSON HX-20 Serial Options Emulator");
+    QCoreApplication::setApplicationVersion(QT_VERSION_STR);
+    QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps, true);
+    QCommandLineParser parser;
+    parser.setApplicationDescription(QCoreApplication::applicationName());
+    parser.addHelpOption();
+    parser.addVersionOption();
+    parser.addOption(QCommandLineOption("device", "Use <device> for communication.", "device"));
+    parser.addOption(QCommandLineOption("disk1", "Use <directory> for the first disk drive.", "directory"));
+    parser.addOption(QCommandLineOption("disk2", "Use <directory> for the second disk drive.", "directory"));
+    parser.addOption(QCommandLineOption("disk3", "Use <directory> for the third disk drive.", "directory"));
+    parser.addOption(QCommandLineOption("disk4", "Use <directory> for the fourth disk drive.", "directory"));
+    parser.addOption(QCommandLineOption("config", "Use <config> As configuration set. The other command line options override any option from the configuration set.", "config"));
+    parser.process(app);
 
     setlocale(LC_NUMERIC, "C");
 
-    window.show_all();
+    MainWindow mainWin;
 
-    Gtk::Main::run();
+    if(parser.isSet("config")) {
+        mainWin.setConfigFromCommandline(parser.value("config"));
+    }
 
-    return 0;
+    mainWin.loadConfiguration(mainWin.currentConfiguration, true);
+
+    if(parser.isSet("disk1")) {
+        mainWin.setDiskFromCommandline(0,1,parser.value("disk1"));
+    }
+    if(parser.isSet("disk2")) {
+        mainWin.setDiskFromCommandline(0,2,parser.value("disk2"));
+    }
+    if(parser.isSet("disk3")) {
+        mainWin.setDiskFromCommandline(1,1,parser.value("disk3"));
+    }
+    if(parser.isSet("disk4")) {
+        mainWin.setDiskFromCommandline(1,2,parser.value("disk4"));
+    }
+
+    if(parser.isSet("device")) {
+        mainWin.connectCommunication(parser.value("device"));
+    } else if (mainWin.settingsConfigurationRoot->contains("comms_device")) {
+        try {
+            mainWin.connectCommunication(mainWin.settingsConfigurationRoot->value("comms_device").toString());
+        } catch(std::exception &e) {
+        }
+    }
+
+    mainWin.show();
+    return app.exec();
 }

@@ -116,11 +116,15 @@ uint8_t cur_x = 0;
 uint8_t cur_y = 0;
 
 int got_packet(uint16_t sid, uint16_t did, uint8_t fnc, uint16_t size,
-                uint8_t *buf) __attribute__((warn_unused_result));
+                uint8_t *inbuf) __attribute__((warn_unused_result));
 int got_packet(uint16_t sid, uint16_t did, uint8_t fnc, uint16_t size,
-                uint8_t *buf) {
+                uint8_t *inbuf) {
     uint8_t b;
     switch(fnc) {
+    case 0x80:
+        b = 0xff;
+        if(send_packet(did, sid, fnc, 1, &b) < 0) return -1;
+        break;
     case 0x93:
         b = 0;
         if(send_packet(did, sid, fnc, 1, &b) < 0) return -1;
@@ -149,14 +153,14 @@ int got_packet(uint16_t sid, uint16_t did, uint8_t fnc, uint16_t size,
     case 0x8f: {
         uint8_t b;
         printf("sending pixel at %d,%d\n",
-               (buf[0] << 8) | buf[1], (buf[2] << 8) | buf[3]);
+               (inbuf[0] << 8) | inbuf[1], (inbuf[2] << 8) | inbuf[3]);
         b = 0;
         if(send_packet(did, sid, fnc, 1, &b) < 0) return -1;
         break;
     }
     case 0x92: {
         printf("writing %c(%02x) at %d,%d\n",
-               buf[0], buf[0],
+               inbuf[0], inbuf[0],
                cur_x, cur_y);
         uint8_t buf[2];
         buf[0] = cur_x;
@@ -166,7 +170,7 @@ int got_packet(uint16_t sid, uint16_t did, uint8_t fnc, uint16_t size,
     }
     case 0x98: {
         printf("writing %c(%02x) at %d,%d\n",
-               buf[0], buf[0],
+               inbuf[0], inbuf[0],
                cur_x, cur_y);
         uint8_t buf[4];
         buf[0] = cur_x;
@@ -187,18 +191,18 @@ int got_packet(uint16_t sid, uint16_t did, uint8_t fnc, uint16_t size,
     }
     case 0x97: {
         printf("sending %d char(s) from %d,%d\n",
-               buf[2], buf[0], buf[1]);
-        uint8_t *b = (uint8_t *)malloc(buf[2]);
-        memset(b,0,buf[2]);
-        if(send_packet(did, sid, fnc, buf[2], b) < 0) return -1;
+               inbuf[2], inbuf[0], inbuf[1]);
+        uint8_t *b = (uint8_t *)malloc(inbuf[2]);
+        memset(b,0,inbuf[2]);
+        if(send_packet(did, sid, fnc, inbuf[2], b) < 0) return -1;
         break;
     }
     //hx20 does not want an answer if bit 6 is set
     case 0xc2:
         printf("setting cursor_position to %d,%d\n",
-               buf[0],buf[1]);
-        cur_x = buf[0];
-        cur_y = buf[1];
+               inbuf[0],inbuf[1]);
+        cur_x = inbuf[0];
+        cur_y = inbuf[1];
         break;
     case 0xc5:
         break;
@@ -206,18 +210,18 @@ int got_packet(uint16_t sid, uint16_t did, uint8_t fnc, uint16_t size,
         break;
     case 0xc7:
         printf("set point at %d,%d to %d\n",
-               (buf[0] << 8) | buf[1], (buf[2] << 8) | buf[3], buf[4]);
+               (inbuf[0] << 8) | inbuf[1], (inbuf[2] << 8) | inbuf[3], inbuf[4]);
         break;
     case 0xc8:
         printf("set line from %d,%d to %d,%d to %d\n",
-               (buf[0] << 8) | buf[1], (buf[2] << 8) | buf[3],
-               (buf[4] << 8) | buf[5], (buf[6] << 8) | buf[7],
-               buf[8]);
+               (inbuf[0] << 8) | inbuf[1], (inbuf[2] << 8) | inbuf[3],
+               (inbuf[4] << 8) | inbuf[5], (inbuf[6] << 8) | inbuf[7],
+               inbuf[8]);
         break;
     case 0xc9:
         break;
     case 0xcf:
-        printf("select color set %d\n",buf[0]);
+        printf("select color set %d\n",inbuf[0]);
         break;
     case 0xd4://screen new?
         break;
