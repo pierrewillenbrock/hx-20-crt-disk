@@ -80,6 +80,7 @@ int main(int argc, char **argv) {
     try {
         TeleDiskParser::Disk disk(vm["input"].as<std::string>().c_str());
 
+        size_t sector_size = 128 << *(--disk.length_ids.end());
         if(verbose) {
             std::cerr << "Found idCylinder: " << disk.min.idCylinder
                       << " - " << disk.max.idCylinder
@@ -88,35 +89,53 @@ int main(int argc, char **argv) {
                       << " idSector: " << disk.min.idSector
                       << " - " << disk.max.idSector
                       << "\n";
+            std::cerr << "Using " << sector_size << " bytes/sector\n";
+            std::cerr << "idCylinder:";
+            for(auto c : disk.cylinder_ids)
+                std::cerr << " " << c;
+            std::cerr << "\n";
+            std::cerr << "idSide:    ";
+            for(auto s : disk.side_ids)
+                std::cerr << " " << s;
+            std::cerr << "\n";
+            std::cerr << "idSector:  ";
+            for(auto s : disk.sector_ids)
+                std::cerr << " " << s;
+            std::cerr << "\n";
+            std::cerr << "idLength:  ";
+            for(auto l : disk.length_ids)
+                std::cerr << " " << l;
+            std::cerr << "\n";
         }
 
         if(vm.count("output")) {
             std::ofstream of(vm["output"].as<std::string>());
 
             //now dump disk in 0-39/0-1/1-16 format into one flat image file
-            for(unsigned int c = disk.min.idCylinder;
-                    c <= disk.max.idCylinder; c++)
-                for(unsigned int h = disk.min.idSide;
-                        h <= disk.max.idSide; h++)
-                    for(unsigned int s = disk.min.idSector;
-                            s <= disk.max.idSector; s++) {
+            size_t sectcount = 0;
+            for(auto c : disk.cylinder_ids) {
+                for(auto h : disk.side_ids) {
+                    for(auto s : disk.sector_ids) {
                         TeleDiskParser::Sector *se = disk.findSector(TeleDiskParser::CHS(c,h,s));
-                        if(!se->data.empty()) {
+                        if(se && !se->data.empty()) {
                             if(verbose)
                                 printf("dumping CHS %d/%d/%d\n",
                                        se->chs.idCylinder,se->chs.idSide,se->chs.idSector);
-                            of.seekp(
-                            ((se->chs.idCylinder*2+
-                              se->chs.idSide)*16+
-                             (se->chs.idSector-1))*256
-                            );
-                            of.write(se->data.data(),256);
-                        } else {
+                            of.seekp(sectcount*sector_size);
+                            of.write(se->data.data(),std::min(sector_size, se->data.size()));
+                        } else if(se) {
                             if(verbose)
                                 printf("no data at CHS %d/%d/%d\n",
                                        se->chs.idCylinder,se->chs.idSide,se->chs.idSector);
+                        } else {
+                            if(verbose)
+                                printf("no sector at CHS %d/%d/%d\n",
+                                       c,h,s);
                         }
+                        sectcount++;
                     }
+                }
+            }
         }
         epsonDirEnt directory[64];
         TeleDiskParser::CHS directory_base(4,0,1);

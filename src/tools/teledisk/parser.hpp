@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <vector>
+#include <set>
 
 namespace TeleDiskParser {
 
@@ -63,7 +64,7 @@ public:
     Sector(std::basic_istream<char> &s);
     Sector(Sector const &s);
     Sector();
-    void write(std::basic_ostream<char> &s);
+    void write(std::basic_ostream<char> &s, bool no_compress = false);
 };
 
 class Track {
@@ -77,7 +78,7 @@ public:
 public:
     Track(std::basic_istream<char> &s);
     Track();
-    void write(std::basic_ostream<char> &s);
+    void write(std::basic_ostream<char> &s, bool no_compress_sectors = false);
 };
 
 class Comment {
@@ -126,7 +127,15 @@ public:
 
     CHS min;
     CHS max;
+    std::set<int> cylinder_ids;
+    std::set<int> side_ids;
+    std::set<int> sector_ids;
+    std::set<int> length_ids;
+    bool advancedCompression;
+    bool no_compress_sectors;
 private:
+    void readDiskMain(bool have_comment, std::basic_istream<char> &s);
+    void writeDiskMain(std::basic_ostream<char> &s);
     void readDisk(std::basic_istream<char> &s);
     void writeDisk(std::basic_ostream<char> &s);
 public:

@@ -1,14 +1,23 @@
 
 #include "disk-drive-adapters.hpp"
-#include "tools/teledisk/parser.hpp"
+#include "../../tools/teledisk/parser.hpp"
 #include <string.h>
+#include <QFileInfo>
 
 TelediskImageDrive::TelediskImageDrive(std::string const &filename)
 : filename(filename) {
-    diskimage = std::make_unique<TeleDiskParser::Disk>(filename.c_str());
+    QFileInfo fi(filename.c_str());
+    if(fi.exists()) {
+        diskimage = std::make_unique<TeleDiskParser::Disk>(filename.c_str());
+    } else {
+        diskimage = std::make_unique<TeleDiskParser::Disk>();
+        diskimage->advancedCompression = true;
+        diskimage->write(filename.c_str());
+    }
 }
 
-TelediskImageDrive::~TelediskImageDrive() =default;
+TelediskImageDrive::~TelediskImageDrive() {
+}
 
 void TelediskImageDrive::reset() {
 }
@@ -43,6 +52,7 @@ bool TelediskImageDrive::format(uint8_t track, uint8_t head,
         s.idLengthCode = sector_size_code;
         s.flags = TeleDiskParser::Sector::SectorFlags(0);
         s.data.resize(128 << sector_size_code);
+        memset(s.data.data(), 0xe5, s.data.size());
         t->sectors.push_back(s);
     }
     diskimage->write(filename.c_str());

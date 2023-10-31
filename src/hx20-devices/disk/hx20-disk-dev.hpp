@@ -7,9 +7,9 @@
 #include <QIcon>
 #include <memory>
 
-#include "hx20-ser-proto.hpp"
+#include "../../hx20-ser-proto.hpp"
 #include "tf20-adapters.hpp"
-#include "settings.hpp"
+#include "../../settings.hpp"
 
 QT_BEGIN_NAMESPACE
 

@@ -20,8 +20,8 @@ class ImgSearch;
 #define BDOS_READ_ERROR 0xfa
 #define BDOS_WRITE_ERROR 0xfb
 #define BDOS_SELECT_ERROR 0xfc
-#define BDOS_WRITE_PROTECT_ERROR1 0xfd
-#define BDOS_WRITE_PROTECT_ERROR2 0xfe
+#define BDOS_WRITE_PROTECT_ERROR1 0xfd //used when the directory could not be read
+#define BDOS_WRITE_PROTECT_ERROR2 0xfe //used when a file is read-only
 #define BDOS_FILE_NOT_FOUND 0xff
 
 class TF20DriveInterface {
@@ -53,6 +53,8 @@ public:
     //0x23
     virtual uint8_t file_size(void *fcb, uint8_t &extent,
                               uint16_t &record, uint32_t &records) =0;
+    //0x24
+    virtual uint8_t file_tell(void *fcb, uint32_t &records) =0;
     //0x7b
     virtual uint8_t disk_write(uint8_t track, uint8_t sector, void const *buffer) =0;
     //0x7c
@@ -96,6 +98,8 @@ public:
     //0x23
     virtual uint8_t file_size(void *fcb, uint8_t &extent,
                               uint16_t &record, uint32_t &records) override;
+    //0x24
+    virtual uint8_t file_tell(void *fcb, uint32_t &records) override;
     //0x7b
     virtual uint8_t disk_write(uint8_t track, uint8_t sector, void const *buffer) override;
     //0x7c
@@ -139,6 +143,8 @@ public:
     //0x23
     virtual uint8_t file_size(void *fcb, uint8_t &extent,
                               uint16_t &record, uint32_t &records) override;
+    //0x24
+    virtual uint8_t file_tell(void *fcb, uint32_t &records) override;
     //0x7b
     virtual uint8_t disk_write(uint8_t track, uint8_t sector, void const *buffer) override;
     //0x7c

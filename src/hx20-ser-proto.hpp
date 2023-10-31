@@ -39,6 +39,7 @@ public:
         GotUnassociated,
         GotPacketHeaderRequest,
         GotPacketTextRequest,
+        GotPacketTextEnd,
         GotSelectRequest,
         GotReverseDirection,
         GotPacketHeaderResponse,
@@ -70,7 +71,8 @@ private:
         Select,
         Header,
         HaveHeader,
-        Text
+        Text,
+        EndOfText
     };
     int fd;
 

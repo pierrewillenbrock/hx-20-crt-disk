@@ -32,10 +32,10 @@
   Device ID
   anything
   ENQ
-  (sends ACK)
+  (sends ACK)|(sends NAK, restart where?)
   {
     EOT
-    (restarting after first EOT)
+    (restarting(where?) after first EOT)
   |
     SOT
     fmt
@@ -44,20 +44,20 @@
     fnc
     siz
     hcs
-    (sends ACK)
+    (sends ACK)|(sends NAK, restart where?)
     [
       ENQ
       (sends ACK)
     ]
     {
       EOT
-      (restarting after first EOT)
+      (restarting(where?) after first EOT)
     |
       STX
       data
       ETX
       checksum over all of the above
-      (sends ACK)
+      (sends ACK)|(sends NAK, restart where?)
       [
         ENQ
         (sends ACK)
@@ -65,7 +65,32 @@
       EOT
     }
   }
+
+  When the TF-20 sends a packet, it does like this:
+  up to 4 restarts over all. Cancels the command if number of restarts greater than 4
+  start:
+    (send SOH, fmt, did, sid, fnc, siz, hcs)
+  header_recv:
+    no data or NAK => restart at header_recv |
+    ACK => continue |
+    any other data: restart at start
+
+    reset restart counter to 4
+  start_buffer:
+    (send STX, buffer, ETX, hcs)
+  buffer_recv:
+    no data or NAK => restart at buffer_recv |
+    ACK => continue |
+    any other data: restart at start_buffer
+
+    (send EOT)
  */
+
+#if 0
+#define EPSP_DEBUG(fmt, ...) EPSP_DEBUG(fmt, ## __VA_ARGS__)
+#else
+#define EPSP_DEBUG(fmt, ...)
+#endif
 
 #define SOH 0x1
 #define STX 0x2
@@ -82,6 +107,19 @@ HX20SerialDevice::~HX20SerialDevice() =default;
 
 HX20SerialMonitor::~HX20SerialMonitor() =default;
 
+static int readTimeout(int fd, void *buf, size_t nbytes, int timeout) {
+    struct pollfd pfd;
+    pfd.fd = fd;
+    pfd.events = POLLIN;
+    int res;
+    res = ::poll(&pfd,1,timeout);
+    if(res <= 0) {
+        return 0;
+    }
+
+    return read(fd, buf, nbytes);
+}
+
 #define READb(v) do { uint8_t __b; if(read(fd,&__b,1) != 1) return -1; (v) = __b; } while(0)
 #define READSUMb(v) do { uint8_t __b; if(read(fd,&__b,1) != 1) return -1; sum += __b; (v) = __b; } while(0)
 #define WRITEb(v) do { uint8_t __b(v); if(write(fd,&__b,1) != 1) return -1; } while(0)
@@ -89,24 +127,52 @@ HX20SerialMonitor::~HX20SerialMonitor() =default;
 
 int HX20SerialConnection::sendPacket(uint16_t sid, uint16_t did, uint8_t fnc,
                                       uint16_t size, uint8_t *buf) {
+    /*
+  When the TF-20 sends a packet, it does like this:
+  up to 4 restarts over all. Cancels the command if number of restarts greater than 4
+  start:
+    (send SOH, fmt, did, sid, fnc, siz, hcs)
+  header_recv:
+    no data or NAK => restart at header_recv |
+    ACK => continue |
+    any other data: restart at start
+
+    reset restart counter to 4
+  start_buffer:
+    (send STX, buffer, ETX, hcs)
+  buffer_recv:
+    no data or NAK => restart at buffer_recv |
+    ACK => continue |
+    any other data: restart at start_buffer
+
+    (send EOT)
+*/
     uint8_t sum;
     uint8_t fmt = 1;//slave sending a block to master
     uint8_t b;
     uint16_t siz = size-1;
     int i;
+
+    //The disk device would have at most one byte stored, so just flush
+    //all the chatter from the hx-20 out.
+    while(true) {
+        int res = readTimeout(fd, &b, 1, 0);
+        if(res < 0)
+            return -1;
+        if(res == 0) {
+            break;
+        }
+        for(auto &m : monitors)
+            m->monitorInput(HX20SerialMonitor::GotUnassociated,
+                            std::vector<uint8_t>(1, b));
+    }
+
     if((did & 0xff00) || (sid & 0xff00))
         fmt |= 0x04;
     if(siz & 0xff00)
         fmt |= 0x02;
 
-    READb(b);
-    for(auto &m : monitors) {
-        m->monitorInput(HX20SerialMonitor::GotReverseDirection,
-                        std::vector<uint8_t>(1, b));
-        if(b != EOT)
-            return 1;
-    }
-//    printf("eot = %02x\n", b);
+    int retries = 4;
 
     while(1) {
         sum = 0;
@@ -145,26 +211,40 @@ int HX20SerialConnection::sendPacket(uint16_t sid, uint16_t did, uint8_t fnc,
 
         for(auto &m : monitors)
             m->monitorOutput(HX20SerialMonitor::SentPacketHeaderRequest, data);
-        READb(b);
-//        printf("answer: %02x\n",b);
-        if(b == ACK) {
+
+        while(true) {
+            int res = readTimeout(fd, &b, 1, 800);
+            if(res < 0)
+                return -1;
+            if(res == 0) {
+                b = 0;
+                break;
+            }
+//            EPSP_DEBUG("answer: %02x\n",b);
             for(auto &m : monitors)
                 m->monitorInput(HX20SerialMonitor::GotPacketHeaderResponse,
                                 std::vector<uint8_t>(1, b));
-            break;
-        } else {
-            //WAK handling would be:
-            //1) WAK received; wait 1s, send ENQ. if WAK again, stay at 1)
-            //2) ACK received, continue.
-            for(auto &m : monitors)
-                m->monitorInput(HX20SerialMonitor::GotPacketHeaderResponse,
-                                std::vector<uint8_t>(1, b));
-            printf("error: hx20 replied %02x\n",b);
-            fflush(stdout);
-            return 1;
+            if(b == ACK) {
+                break;
+            } else if (b == NAK || b == EOT) {
+                continue;
+            } else {
+                //WAK handling would be:
+                //1) WAK received; wait 1s, send ENQ. if WAK again, stay at 1)
+                //2) ACK received, continue.
+                EPSP_DEBUG("error: hx20 replied %02x\n",b);
+                fflush(stdout);
+                break;
+            }
         }
+        if(b == ACK)
+            break;
+        retries--;
+        if(retries == 0)
+            return 1;
     }
 
+    retries = 4;
     while(1) {
         sum = 0;
         std::vector<uint8_t> data;
@@ -182,24 +262,36 @@ int HX20SerialConnection::sendPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         for(auto &m : monitors)
             m->monitorOutput(HX20SerialMonitor::SentPacketTextRequest, data);
 
-        READb(b);
-//        printf("answer: %02x\n",b);
-        if(b == ACK) {
+        while(true) {
+            int res = readTimeout(fd, &b, 1, 800);
+            if(res < 0)
+                return -1;
+            if(res == 0) {
+                b = 0;
+                break;
+            }
+//            EPSP_DEBUG("answer: %02x\n",b);
             for(auto &m : monitors)
                 m->monitorInput(HX20SerialMonitor::GotPacketTextResponse,
                                 std::vector<uint8_t>(1, b));
-            break;
-        } else {
-            //WAK handling would be:
-            //1) WAK received; wait 1s, send ENQ. if WAK again, stay at 1)
-            //2) ACK received, continue.
-            for(auto &m : monitors)
-                m->monitorInput(HX20SerialMonitor::GotPacketTextResponse,
-                                std::vector<uint8_t>(1, b));
-            printf("error: hx20 replied %02x\n",b);
-            fflush(stdout);
-            return 1;
+            if(b == ACK) {
+                break;
+            } else if (b == NAK || b == EOT) {
+                continue;
+            } else {
+                //WAK handling would be:
+                //1) WAK received; wait 1s, send ENQ. if WAK again, stay at 1)
+                //2) ACK received, continue.
+                EPSP_DEBUG("error: hx20 replied %02x\n",b);
+                fflush(stdout);
+                break;//restart at sending the header
+            }
         }
+        if(b == ACK)
+            break;
+        retries--;
+        if(retries == 0)
+            return 1;
     }
 
     WRITEb(EOT);
@@ -221,12 +313,12 @@ uint8_t HX20SerialConnection::checkSumBuf() {
 }
 
 int HX20SerialConnection::receiveByte(uint8_t b) {
-    printf("Got %02x in ",b);
+    EPSP_DEBUG("Got %02x in ",b);
     switch(state) {
     case Select: {
         //according to docs, this is: PS <sid> <did> ENQ, which can
         //be followed up with ACK by the <did> device
-        printf("Select\n");
+        EPSP_DEBUG("Select\n");
         addByteToBuf(b);
         if(buf.size() < 4) {
             fflush(stdout);
@@ -234,7 +326,7 @@ int HX20SerialConnection::receiveByte(uint8_t b) {
         }
         selectedSlaveID = buf[1];
         selectedMasterID = buf[2];
-        printf("Selected 0x%04x => 0x%04x\n",
+        EPSP_DEBUG("Selected 0x%04x => 0x%04x\n",
                selectedMasterID,
                selectedSlaveID);
         for(auto &m : monitors)
@@ -247,45 +339,45 @@ int HX20SerialConnection::receiveByte(uint8_t b) {
                                  std::vector<uint8_t>(1, ACK));
             WRITEb(ACK);
         }
-        printf("\n");
+        EPSP_DEBUG("\n");
         state = NoHeader;
         fflush(stdout);
         return 0;
     }
     case HaveHeader:
         assert(buf.empty());
-        printf("HaveHeader");
+        EPSP_DEBUG("HaveHeader");
         if(b == STX) {
-            printf("\n");
+            EPSP_DEBUG("\n");
             addByteToBuf(b);
             state = Text;
             fflush(stdout);
             return 0;
         }
-        printf("->");
+        EPSP_DEBUG("->");
     case NoHeader:
         assert(buf.empty());
-        printf("NoHeader");
+        EPSP_DEBUG("NoHeader");
         state = NoHeader;
         if(b == SOH) {
             addByteToBuf(b);
             state = Header;
-            printf("->Header\n");
+            EPSP_DEBUG("->Header\n");
         } else if(b == PS) {
             state = Select;
             addByteToBuf(b);
         } else {
             for(auto &m : monitors)
                 m->monitorInput(HX20SerialMonitor::GotUnassociated, std::vector<uint8_t>(1, b));
-            printf("\n");
+            EPSP_DEBUG("\n");
         }
         fflush(stdout);
         return 0;
     case Header: {
-        printf("Header");
+        EPSP_DEBUG("Header");
         addByteToBuf(b);
         if(buf.size() < 2) {
-            printf("\n");
+            EPSP_DEBUG("\n");
             fflush(stdout);
             return 0;
         }
@@ -299,7 +391,7 @@ int HX20SerialConnection::receiveByte(uint8_t b) {
         if(fmt & 0x4) //IDs are 16 bit
             size += 2;
         if(buf.size() < size) {
-            printf("\n");
+            EPSP_DEBUG("\n");
             fflush(stdout);
             return 0;
         }
@@ -311,7 +403,7 @@ int HX20SerialConnection::receiveByte(uint8_t b) {
                 m->monitorOutput(HX20SerialMonitor::SentPacketHeaderResponse,
                                  std::vector<uint8_t>(1, NAK));
             buf.clear();
-            printf("->NoHeader\n");
+            EPSP_DEBUG("->NoHeader\n");
             state = NoHeader;
             fflush(stdout);
             return 0;
@@ -342,13 +434,13 @@ int HX20SerialConnection::receiveByte(uint8_t b) {
             m->monitorOutput(HX20SerialMonitor::SentPacketHeaderResponse,
                              std::vector<uint8_t>(1, ACK));
         buf.clear();
-        printf("->HaveHeader\n");
+        EPSP_DEBUG("->HaveHeader\n");
         state = HaveHeader;
         fflush(stdout);
         return 0;
     }
     case Text: {
-        printf("Text\n");
+        EPSP_DEBUG("Text\n");
         addByteToBuf(b);
         if(buf.size() < (unsigned)siz+1+1+1+1) {
             fflush(stdout);
@@ -364,6 +456,7 @@ int HX20SerialConnection::receiveByte(uint8_t b) {
 
             buf.clear();
             state = HaveHeader;
+            EPSP_DEBUG("->HaveHeader\n");
             fflush(stdout);
             return 0;
         }
@@ -374,8 +467,28 @@ int HX20SerialConnection::receiveByte(uint8_t b) {
         for(auto &m : monitors)
             m->monitorOutput(HX20SerialMonitor::SentPacketTextResponse,
                              std::vector<uint8_t>(1, ACK));
+        state = EndOfText;
+        EPSP_DEBUG("->EndOfText\n");
+        fflush(stdout);
+        break;
+    }
+    case EndOfText: {
+        EPSP_DEBUG("EndOfText");
+        for(auto &m : monitors)
+            m->monitorInput(HX20SerialMonitor::GotPacketTextEnd,
+                            std::vector<uint8_t>(1, b));
+        if(b == ENQ) {
+            WRITEb(ACK);
+            for(auto &m : monitors)
+                m->monitorOutput(HX20SerialMonitor::SentPacketTextResponse,
+                                 std::vector<uint8_t>(1, ACK));
+            break;
+        } else if(b != EOT) {
+            break;
+        }
+        EPSP_DEBUG("->HaveHeader\n");
+        fflush(stdout);
         state = HaveHeader;
-
 
         HX20SerialDevice *dev = devices[did];
 
@@ -392,7 +505,7 @@ int HX20SerialConnection::receiveByte(uint8_t b) {
         return 0;
     }
     default:
-        printf("Unknown??\n");
+        EPSP_DEBUG("Unknown??\n");
         fflush(stdout);
         break;
     }
@@ -474,7 +587,7 @@ int HX20SerialConnection::handleEvents(struct pollfd const *pfd, int nfds) {
 }
 
 void HX20SerialConnection::registerDevice(HX20SerialDevice *dev) {
-    printf("Registering 0x%02x for %s\n",
+    EPSP_DEBUG("Registering 0x%02x for %s\n",
            dev->getDeviceID(), typeid(dev).name());
     fflush(stdout);
     if(devices.find(dev->getDeviceID()) != devices.end())

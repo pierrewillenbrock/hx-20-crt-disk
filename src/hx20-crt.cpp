@@ -37,8 +37,12 @@ int main(int argc, char **argv) {
         mainWin.setConfigFromCommandline(parser.value("config"));
     }
 
+    //we preload the given config, without actually connecting.
+    //everything but the connection can be overriden at no/relatively low cost.
     mainWin.loadConfiguration(mainWin.currentConfiguration, true);
 
+    //commandline options are generally not applied to the configuration
+    //until the user acts on them
     if(parser.isSet("disk1")) {
         mainWin.setDiskFromCommandline(0,1,parser.value("disk1"));
     }
@@ -52,6 +56,8 @@ int main(int argc, char **argv) {
         mainWin.setDiskFromCommandline(1,2,parser.value("disk4"));
     }
 
+    //if a device is supplied use that, now that the configuration is complete
+    //otherwise, use the one from the configuration
     if(parser.isSet("device")) {
         mainWin.connectCommunication(parser.value("device"));
     } else if (mainWin.settingsConfigurationRoot->contains("comms_device")) {

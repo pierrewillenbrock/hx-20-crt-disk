@@ -1,23 +1,15 @@
 
 #include "hx20-crt-dev.hpp"
 
-#include "hx20-default-chars.hpp"
 #include <QTextEdit>
 #include <QMainWindow>
 #include <QDockWidget>
 #include <QPainter>
 #include <QMenu>
-#include "dockwidgettitlebar.hpp"
+#include "../../dockwidgettitlebar.hpp"
 #include "hx20-crt-dev-gfx-cfg.hpp"
 #include "hx20-crt-dev-text-cfg.hpp"
-#include "settings.hpp"
-
-/*TODO:
- * * better visualize the size of the window(set min/max size of the texteditor?)
- * * configure charset(have one for each of the languages with the hx-20 graphics, ...), also: editor.
- * * configure palettes(yes, there should be two for on-screen and a third for the border), also: editor
- * * setup handling of color set
- */
+#include "../../settings.hpp"
 
 HX20CrtGraphicsView::HX20CrtGraphicsView(QWidget *parent, Qt::WindowFlags f)
     : QWidget(parent, f), width(128), height(96), zoom(1.0)

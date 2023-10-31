@@ -1,7 +1,7 @@
 #include "mainwindow.hpp"
 #include "comms-debug.hpp"
-#include "hx20-crt-dev.hpp"
-#include "hx20-disk-dev.hpp"
+#include "hx20-devices/crt/hx20-crt-dev.hpp"
+#include "hx20-devices/disk/hx20-disk-dev.hpp"
 
 #include <fstream>
 #include <set>

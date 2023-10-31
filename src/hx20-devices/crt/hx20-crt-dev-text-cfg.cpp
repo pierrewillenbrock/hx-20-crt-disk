@@ -9,7 +9,7 @@
 #include <iostream>
 
 #include "ui_hx20-crt-dev-text-cfg.h"
-#include "settings.hpp"
+#include "../../settings.hpp"
 
 static int iconSizes[] = {
     128, 96, 64, 48, 32, 16,

@@ -1,7 +1,7 @@
 
 #include "hx20-crt-dev-gfx-cfg.hpp"
 #include "ui_hx20-crt-dev-gfx-cfg.h"
-#include "settings.hpp"
+#include "../../settings.hpp"
 
 #include <QTreeWidgetItem>
 #include <QPainter>

@@ -2,9 +2,11 @@
 #include <fstream>
 #include <sstream>
 #include <array>
+#include <assert.h>
 #include "parser.hpp"
 #include "teledisk.h"
 #include "string.h"
+#include "lzhstreams.hpp"
 
 using namespace TeleDiskParser;
 
@@ -62,6 +64,7 @@ Sector::Sector(Sector const &s) =default;
 Sector::Sector(std::basic_istream<char> &s) {
     SectorHeader sh;
     s.read((char *)&sh,sizeof sh);
+    assert(s.gcount() == sizeof(sh));
 
     chs.idCylinder = sh.idCylinder;
     chs.idSide = sh.idSide;
@@ -70,16 +73,18 @@ Sector::Sector(std::basic_istream<char> &s) {
     flags = (SectorFlags)sh.flags;
 
     if(flags & NoDataMask) {
-        return;
+            return;
     }
     data.resize(128 << idLengthCode);//2^idLengthCode * 128
     unsigned short clen;
     s.read((char *)&clen,sizeof clen);
+    assert(s.gcount() == sizeof(clen));
     if(clen == 0)
         return;
     std::vector<char> cbuf;
     cbuf.resize(clen);
     s.read(cbuf.data(),clen);
+    assert(s.gcount() == clen);
     //pulled everything, now rle-decompress(or whatever is needed)
     switch(cbuf[0]) {
     case 0:
@@ -170,61 +175,60 @@ static void compress(std::vector<char> &out, std::vector<char> const &in) {
     //    except when the literal byte count is still 0, then 2 repetitions is
     //    acceptable
 
-    unsigned int rpos = 0;
-    while(rpos < in.size()) {
-        unsigned int rpos2 = rpos;
+    unsigned int literal_begin = 0;
+    while(literal_begin < in.size()) {
+        unsigned int literal_end = literal_begin;
         //collect literal bytes
-        while(rpos2 < in.size()) {
-            if(rpos2+1 < in.size()) {
-                char d1 = in[rpos2];
-                char d2 = in[rpos2+1];
-                unsigned int rpos3 = rpos2+2;
-                while(rpos3+1 < in.size() &&
-                        in[rpos3] == d1 && in[rpos3+1] == d2 &&
-                        (rpos3+2-rpos2) / 2 < 255) {
-                    rpos3 += 2;
+        while(literal_end+1 < in.size()) {
+            char d1 = in[literal_end];
+            char d2 = in[literal_end+1];
+            unsigned int repetitive_end = literal_end+2;
+            while(repetitive_end+1 < in.size() &&
+                    in[repetitive_end] == d1 && in[repetitive_end+1] == d2 &&
+                    (repetitive_end+2-literal_end) / 2 < 255) {
+                repetitive_end += 2;
+            }
+            unsigned int len = (repetitive_end-literal_end) / 2;
+            if(len >= 3 || (literal_begin == literal_end && len >= 2)) {
+                if(literal_begin != literal_end) {
+                    out.push_back(0);
+                    out.push_back(literal_end-literal_begin);
+                    unsigned int old_end = out.size();
+                    out.resize(old_end+literal_end-literal_begin);
+                    memcpy(out.data()+old_end, in.data()+literal_begin, literal_end-literal_begin);
                 }
-                unsigned int len = (rpos3-rpos2) / 2;
-                if(len >= 3 || (rpos == rpos2 && len >= 2)) {
-                    if(rpos != rpos2) {
-                        out.push_back(0);
-                        out.push_back(rpos2-rpos);
-                        unsigned int old_end = out.size();
-                        out.resize(old_end+rpos2-rpos);
-                        memcpy(out.data()+old_end, in.data()+rpos, rpos2-rpos);
-                    }
-                    out.push_back(1);
-                    out.push_back(len);
-                    out.push_back(d1);
-                    out.push_back(d2);
-                    rpos = rpos2 = rpos3;
-                } else {
-                    rpos2++;
-                    if(rpos2-rpos == 255) {
-                        out.push_back(0);
-                        out.push_back(rpos2-rpos);
-                        unsigned int old_end = out.size();
-                        out.resize(old_end+rpos2-rpos);
-                        memcpy(out.data()+old_end, in.data()+rpos, rpos2-rpos);
-                        rpos = rpos2;
-                    }
+                out.push_back(1);
+                out.push_back(len);
+                out.push_back(d1);
+                out.push_back(d2);
+                literal_begin = literal_end = repetitive_end;
+            } else {
+                literal_end++;
+                if(literal_end-literal_begin == 255) {
+                    out.push_back(0);
+                    out.push_back(literal_end-literal_begin);
+                    unsigned int old_end = out.size();
+                    out.resize(old_end+literal_end-literal_begin);
+                    memcpy(out.data()+old_end, in.data()+literal_begin, literal_end-literal_begin);
+                    literal_begin = literal_end;
                 }
             }
         }
-        if(rpos != rpos2) {
+        if(literal_end+1 >= in.size()) {
+            literal_end = in.size();
+        }
+        if(literal_begin != literal_end) {
             out.push_back(0);
-            out.push_back(rpos2-rpos);
+            out.push_back(literal_end-literal_begin);
             unsigned int old_end = out.size();
-            out.resize(old_end+rpos2-rpos);
-            memcpy(out.data()+old_end, in.data()+rpos, rpos2-rpos);
-            rpos = rpos2;
+            out.resize(old_end+literal_end-literal_begin);
+            memcpy(out.data()+old_end, in.data()+literal_begin, literal_end-literal_begin);
+            literal_begin = literal_end;
         }
     }
-
-
 }
 
-void Sector::write(std::basic_ostream<char> &s) {
+void Sector::write(std::basic_ostream<char> &s, bool no_compress) {
     SectorHeader sh;
     if(!data.empty())
         flags = SectorFlags(unsigned(flags) & ~NoDataMask);
@@ -234,13 +238,19 @@ void Sector::write(std::basic_ostream<char> &s) {
     sh.idSector = chs.idSector;
     sh.idLengthCode = idLengthCode;
     sh.flags = flags;
-    sh.crc = CRC::calc((unsigned char*)&sh,(unsigned char*)&sh.crc) & 0xff;
+    sh.crc = CRC::calc((unsigned char*)data.data(),(unsigned char*)(data.data()+data.size())) & 0xff;
     s.write((char *)&sh,sizeof sh);
 
     if(flags & NoDataMask) {
         return;
     }
-    if(isTwoBytePattern(data)) {
+    if(no_compress) {
+        unsigned short clen = 1+data.size();
+        s.write((char *)&clen,sizeof clen);
+        char c = 0;
+        s.write(&c,1);
+        s.write(data.data(),data.size());
+    } else if(isTwoBytePattern(data)) {
         unsigned short clen = 5;
         s.write((char *)&clen,sizeof clen);
         char cbuf[5];
@@ -288,7 +298,7 @@ Track::Track(std::basic_istream<char> &s) {
 Track::Track() : sectorCount(0), physCylinder(0), physSide(0) {
 }
 
-void Track::write(std::basic_ostream<char> &s) {
+void Track::write(std::basic_ostream<char> &s, bool no_compress_sectors) {
     TrackHeader th;
     if(sectorCount != 255 || sectors.size() != 0)
         sectorCount = sectors.size();
@@ -301,7 +311,7 @@ void Track::write(std::basic_ostream<char> &s) {
         return;
 
     for(auto &sec : sectors) {
-        sec.write(s);
+        sec.write(s, no_compress_sectors);
     }
 }
 
@@ -366,33 +376,14 @@ Disk::Disk()
       trackDensity(Single),
       comment(nullptr),
       dosMode(false),
-      mediaSurfaces(0)
+      mediaSurfaces(0),
+      advancedCompression(false),
+      no_compress_sectors(false)
 {
 }
 
-void Disk::readDisk(std::basic_istream<char> &s) {
-    FileHeader fh;
-    s.read((char *)&fh,sizeof fh);
-    //check for a good version
-    if((fh.ID[0] != 'T' || fh.ID[1] != 'D') &&
-            (fh.ID[0] != 't' || fh.ID[1] != 'd'))
-        throw FormatError("Not a teledisk image");
-    if(CRC::calc((unsigned char*)&fh,(unsigned char*)&fh.crc) != fh.crc)
-        throw FormatError("CRC mismatch");
-    if(10 > fh.version || fh.version > 21)
-        throw FormatError("Bad version");
-    //the advanced compression uses LZHUF, which has some implementations
-    //floating around in files named lzhuf.c.
-    if(fh.ID[0] != 'T' || fh.ID[1] != 'D')
-        throw FormatError("Cannot handle \"advanced compression\" yet");
-    sourceDensity = Density(fh.sourceDensity);
-    driveType = DriveType(fh.driveType);
-    trackDensity = TrackDensity(fh.trackDensity);
-    dosMode = fh.DOSMode;
-    mediaSurfaces = fh.mediaSurfaces;
-
-    //TODO: create decompressing istream for the rest of the file
-    if(fh.trackDensity & 0x80)
+void Disk::readDiskMain(bool have_comment, std::basic_istream<char> &s) {
+    if(have_comment)
         //comment section follows, create it.
         comment = new Comment(s);
     else
@@ -421,18 +412,66 @@ void Disk::readDisk(std::basic_istream<char> &s) {
                 max.idSide = it->chs.idSide;
             if(max.idSector < it->chs.idSector)
                 max.idSector = it->chs.idSector;
+            cylinder_ids.insert(it->chs.idCylinder);
+            side_ids.insert(it->chs.idSide);
+            sector_ids.insert(it->chs.idSector);
+            length_ids.insert(it->idLengthCode);
         }
     } while(tracks.back().sectorCount != 255);
+    tracks.pop_back();
+}
+
+void Disk::readDisk(std::basic_istream<char> &s) {
+    FileHeader fh;
+    s.read((char *)&fh,sizeof fh);
+    //check for a good version
+    advancedCompression = false;
+    if(fh.ID[0] == 'T' && fh.ID[1] == 'D')
+        advancedCompression = false;
+    else if(fh.ID[0] == 't' && fh.ID[1] == 'd')
+        advancedCompression = true;
+    else
+        throw FormatError("Not a teledisk image");
+    if(CRC::calc((unsigned char *)&fh,(unsigned char *)&fh.crc) != fh.crc)
+        throw FormatError("CRC mismatch");
+    if(10 > fh.version || fh.version > 21)
+        throw FormatError("Bad version");
+    sourceDensity = Density(fh.sourceDensity);
+    driveType = DriveType(fh.driveType);
+    trackDensity = TrackDensity(fh.trackDensity);
+    dosMode = fh.DOSMode;
+    mediaSurfaces = fh.mediaSurfaces;
+
+    if(advancedCompression) {
+        ilzhstream s2(s);
+        readDiskMain(fh.trackDensity & 0x80, s2);
+    } else {
+        readDiskMain(fh.trackDensity & 0x80, s);
+    }
+}
+
+void Disk::writeDiskMain(std::basic_ostream<char> &s) {
+    if(comment) {
+        comment->write(s);
+    }
+    for(auto &t : tracks) {
+        t.write(s, no_compress_sectors);
+    }
+    Track t;
+    t.physCylinder = 255;
+    t.physSide = 255;
+    t.sectorCount = 255;
+    t.write(s);
 }
 
 void Disk::writeDisk(std::basic_ostream<char> &s) {
     FileHeader fh;
     memset(&fh, 0, sizeof(fh));
-    fh.ID[0] = 'T';//'t','d' would be "advanced compression"
-    fh.ID[1] = 'D';
+    fh.ID[0] = advancedCompression?'t':'T';
+    fh.ID[1] = advancedCompression?'d':'D';
     fh.volSeq = 0;
     fh.checkSig = 0;
-    fh.version = 0;
+    fh.version = 21;
     fh.sourceDensity = sourceDensity;
     fh.driveType = driveType;
     fh.trackDensity = trackDensity;
@@ -443,19 +482,11 @@ void Disk::writeDisk(std::basic_ostream<char> &s) {
     fh.crc = CRC::calc((unsigned char*)&fh,(unsigned char*)&fh.crc);
     s.write((char *)&fh,sizeof fh);
 
-    //TODO: create compressing ostream for the rest of the file
-    if(comment) {
-        comment->write(s);
-    }
-    if(tracks.empty() || tracks.back().sectorCount != 255 || tracks.back().sectors.size() != 0) {
-        Track t;
-        t.physCylinder = 255;
-        t.physSide = 255;
-        t.sectorCount = 255;
-        tracks.push_back(t);
-    }
-    for(auto &t : tracks) {
-        t.write(s);
+    if(advancedCompression) {
+        olzhstream s2(s);
+        writeDiskMain(s2);
+    } else {
+        writeDiskMain(s);
     }
 }
 

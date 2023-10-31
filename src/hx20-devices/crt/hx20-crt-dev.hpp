@@ -5,7 +5,7 @@
 #include <QWidget>
 #include <array>
 
-#include "hx20-ser-proto.hpp"
+#include "../../hx20-ser-proto.hpp"
 
 QT_BEGIN_NAMESPACE
 
