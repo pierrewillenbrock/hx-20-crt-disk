@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <set>
+#include <memory>
 
 namespace TeleDiskParser {
 
@@ -119,7 +120,7 @@ public:
     Density sourceDensity;
     DriveType driveType;
     TrackDensity trackDensity;
-    Comment *comment;
+    std::unique_ptr<Comment> comment;
     bool dosMode;
     unsigned int mediaSurfaces;
 

@@ -385,9 +385,9 @@ Disk::Disk()
 void Disk::readDiskMain(bool have_comment, std::basic_istream<char> &s) {
     if(have_comment)
         //comment section follows, create it.
-        comment = new Comment(s);
+        comment.reset(new Comment(s));
     else
-        comment = NULL;
+        comment.reset();
     min.idCylinder = ~0U;
     min.idSide = ~0U;
     min.idSector = ~0U;

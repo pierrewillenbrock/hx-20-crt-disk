@@ -8,6 +8,7 @@
 QT_BEGIN_NAMESPACE
 
 class QActionGroup;
+class QSocketNotifier;
 
 QT_END_NAMESPACE
 
@@ -22,7 +23,7 @@ class MainWindow : public QMainWindow
 public:
     QSettings settings;
     Settings::Container settingsContainer;
-    Settings::Group *settingsRoot;
+    std::unique_ptr<Settings::Group> settingsRoot;
     Settings::Group *settingsConfigurationRoot;
     Settings::Group *settingsPresetRoot;
     int currentConfiguration;
@@ -31,6 +32,9 @@ public:
     std::unique_ptr<HX20SerialConnection> conn;
     CommsDebugWindow *commsdbg;
     QActionGroup *config_action_group;
+    std::unique_ptr<QSocketNotifier> in_notifier;
+    std::unique_ptr<QSocketNotifier> out_notifier;
+    std::unique_ptr<QSocketNotifier> err_notifier;
 
     MainWindow(QWidget *parent = nullptr, Qt::WindowFlags flags = Qt::WindowFlags());
     virtual ~MainWindow() override;

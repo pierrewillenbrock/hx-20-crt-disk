@@ -39,7 +39,7 @@ static void hexdump(char const *buf, unsigned int size) {
     uint16_t addr;
     for(addr = 0; addr < size; addr+=16) {
         printf("%04x:",addr);
-        uint16_t a2 = addr;
+        uint16_t a2;
         for(a2 = addr; a2 < addr+16; a2++) {
             if((a2 & 0x3) == 0)  //4-byte seperator
                 printf(" ");
@@ -1119,7 +1119,7 @@ void HX20DiskDevice::addDocksToMainWindow(QMainWindow *window,
         l->addWidget(drive(i).last_file);
 
         DockWidgetTitleBar *title_bar = new DockWidgetTitleBar();
-        QMenu *mnu = new QMenu();
+        QMenu *mnu = new QMenu(title_bar->configureButton());
         mnu->addAction(tr("Set disk &directory..."),
         [this,i]() {
             QString result = QFileDialog::getExistingDirectory(nullptr,
@@ -1201,6 +1201,8 @@ void HX20DiskDevice::setSettings(Settings::Group *settingsConfig,
 }
 
 void HX20DiskDevice::updateFromConfig() {
+    if(!settingsConfig)
+        return;
     for(int drive_code = 1; drive_code <= 2; drive_code++) {
         QString d1 = settingsConfig->value
                      (QString("disk_%1").arg(drive_code),

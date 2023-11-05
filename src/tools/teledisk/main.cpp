@@ -11,7 +11,7 @@ void hexdump(char const *buf, unsigned int size) {
     uint16_t addr;
     for(addr = 0; addr < size; addr+=16) {
         printf("%04x:",addr);
-        uint16_t a2 = addr;
+        uint16_t a2;
         for(a2 = addr; a2 < addr+16; a2++) {
             if((a2 & 0x3) == 0)  //4-byte seperator
                 printf(" ");

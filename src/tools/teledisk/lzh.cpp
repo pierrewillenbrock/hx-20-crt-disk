@@ -425,6 +425,7 @@ unsigned int BitReaderContext::setInput(unsigned char const *input, unsigned int
 
 void BitWriterContext::Putcode(int l, unsigned int c)     /* output c bits of code */
 {
+    assert(output);
     //c is 16 bits wide, bits are valid starting bit 15 down to bit 16-l.
     putbuf |= c >> putlen;
     putlen += l;

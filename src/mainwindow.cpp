@@ -126,13 +126,10 @@ MainWindow::MainWindow(QWidget *parent, Qt::WindowFlags flags) :
     settingsConfigurationRoot(nullptr),
     currentConfiguration(-1),
     crt_dev(std::make_unique<HX20CrtDevice>()),
-    disk_devs(
- {
-    std::make_unique<HX20DiskDevice>(0),
-    std::make_unique<HX20DiskDevice>(1)}
-         ),
-         commsdbg(new CommsDebugWindow()),
-config_action_group(new QActionGroup(this))
+    disk_devs({
+        std::make_unique<HX20DiskDevice>(0),
+        std::make_unique<HX20DiskDevice>(1)}),
+    commsdbg(new CommsDebugWindow()), config_action_group(new QActionGroup(this))
 {
     commsdbg->setObjectName("commsdebugdock");
     currentConfiguration = settingsRoot->value("CurrentConfiguration",0).toInt();
@@ -263,7 +260,9 @@ config_action_group(new QActionGroup(this))
     menuBar()->addMenu(devices_menu);
 }
 
-MainWindow::~MainWindow() =default;
+MainWindow::~MainWindow() {
+    commsdbg->setConnection(nullptr);
+}
 
 bool MainWindow::setConfigFromCommandline(QString const &config) {
     bool ok;
@@ -357,46 +356,46 @@ void MainWindow::connectCommunication(QString const &device) {
 
     for(auto &pfd : pfds) {
         if(pfd.events & POLLIN) {
-            QSocketNotifier *notifier =
-            new QSocketNotifier(pfd.fd, QSocketNotifier::Type::Read);
-            QObject::connect(notifier, &QSocketNotifier::activated,
-            [this, pfd, notifier](QSocketDescriptor, QSocketNotifier::Type) {
+            in_notifier.reset(
+            new QSocketNotifier(pfd.fd, QSocketNotifier::Type::Read));
+            QObject::connect(in_notifier.get(), &QSocketNotifier::activated,
+            [this, pfd](QSocketDescriptor, QSocketNotifier::Type) {
                 auto p = pfd;
                 p.revents = POLLIN;
                 if(conn->handleEvents(&p, 1) < 0) {
                     QMessageBox::critical(this, "IO error", "IO on filedescriptor failed");
-                    notifier->deleteLater();
+                    in_notifier.release()->deleteLater();
                 }
             });
-            notifier->setEnabled(true);
+            in_notifier->setEnabled(true);
         }
         if(pfd.events & POLLOUT) {
-            QSocketNotifier *notifier =
-            new QSocketNotifier(pfd.fd, QSocketNotifier::Type::Write);
-            QObject::connect(notifier, &QSocketNotifier::activated,
-            [this, pfd, notifier](QSocketDescriptor, QSocketNotifier::Type) {
+            out_notifier.reset(
+            new QSocketNotifier(pfd.fd, QSocketNotifier::Type::Write));
+            QObject::connect(out_notifier.get(), &QSocketNotifier::activated,
+            [this, pfd](QSocketDescriptor, QSocketNotifier::Type) {
                 auto p = pfd;
                 p.revents = POLLOUT;
                 if(conn->handleEvents(&p, 1) < 0) {
                     QMessageBox::critical(this, "IO error", "IO on filedescriptor failed");
-                    notifier->deleteLater();
+                    out_notifier.release()->deleteLater();
                 }
             });
-            notifier->setEnabled(true);
+            out_notifier->setEnabled(true);
         }
         if(pfd.events & (POLLPRI | POLLERR | POLLHUP | POLLNVAL)) {
-            QSocketNotifier *notifier =
-            new QSocketNotifier(pfd.fd, QSocketNotifier::Type::Exception);
-            QObject::connect(notifier, &QSocketNotifier::activated,
-            [this, pfd, notifier](QSocketDescriptor, QSocketNotifier::Type) {
+            err_notifier.reset(
+            new QSocketNotifier(pfd.fd, QSocketNotifier::Type::Exception));
+            QObject::connect(err_notifier.get(), &QSocketNotifier::activated,
+            [this, pfd](QSocketDescriptor, QSocketNotifier::Type) {
                 auto p = pfd;
                 p.revents = p.events;
                 if(conn->handleEvents(&p, 1) < 0) {
                     QMessageBox::critical(this, "IO error", "IO on filedescriptor failed");
-                    notifier->deleteLater();
+                    err_notifier.release()->deleteLater();
                 }
             });
-            notifier->setEnabled(true);
+            err_notifier->setEnabled(true);
         }
     }
 

@@ -346,6 +346,8 @@ uint8_t ImgFCB::write(uint32_t record,uint8_t const *buf) {
             printf("Could not find dir ent\n");
             return BDOS_READ_ERROR;
         }
+    } else {
+        ent = last_ent;
     }
 
     if(dir_ent[16+(record % 256)/16] == 0) {
