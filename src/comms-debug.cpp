@@ -514,15 +514,27 @@ public:
                     dr.subdecodes.push_back(dr2);
                 }
             } else {
-                uint8_t extent_code = 0;
                 if(locptr.size() >= 1) {
                     DecodeResult dr2;
                     dr2.location = locptr;
                     dr2.location.end = dr2.location.begin+1;
-                    dr2.name = "Records";
-                    extent_code = locptr.at(0);
+                    dr2.name = "Extent";
                     dr2.value = QString("0x%1").
-                                arg((locptr.at(0) >> 1) & 0x7f, 2, 16, QChar('0'));
+                                arg(locptr.at(0), 2, 16, QChar('0'));
+                    DecodeResult dr3;
+                    dr3.location = dr2.location;
+                    dr3.name = "Extent match bits";
+                    dr3.value = QString("0x%1").
+                                arg((locptr.at(0) & 0xe0) >> 5, 1, 16, QChar('0'));
+                    dr2.subdecodes.push_back(dr3);
+                    dr3.name = "Extent group number";
+                    dr3.value = QString("0x%1").
+                                arg((locptr.at(0) & 0x1e) >> 1, 1, 16, QChar('0'));
+                    dr2.subdecodes.push_back(dr3);
+                    dr3.name = "Extent number(counts 8 blocks)";
+                    dr3.value = QString("0x%1").
+                                arg((locptr.at(0) & 0x01), 1, 16, QChar('0'));
+                    dr2.subdecodes.push_back(dr3);
                     dr.subdecodes.push_back(dr2);
                     locptr.begin++;
                 }
@@ -531,14 +543,12 @@ public:
                     dr2.location = locptr;
                     dr2.location.end = dr2.location.begin+1;
                     dr2.name = "Records";
-                    extent_code = locptr.at(0);
                     dr2.value = QString("%1").
-                                arg(locptr.at(0) + 0x80 * (extent_code & 1));
+                                arg(locptr.at(0));
                     dr.subdecodes.push_back(dr2);
                     locptr.begin++;
                 }
-                decodeUint8Indexed(locptr, dr, "Result", bdos_result_map); //0x02
-                if(locptr.size() > 0) {
+                if(locptr.size() > 0) { //0x02
                     DecodeResult dr2;
                     dr2.location = locptr;
                     if(dr2.location.end > dr2.location.begin+128)
@@ -561,6 +571,7 @@ public:
                     dr2.name = "Incomplete";
                     dr.subdecodes.push_back(dr2);
                 }
+                decodeUint8Indexed(locptr, dr, "Result", bdos_result_map); //0x82
             }
             basePacket.info = dr.name + ": " + dr.value;
             break;
@@ -604,15 +615,27 @@ public:
                     dr.subdecodes.push_back(dr2);
                 }
             } else {
-                uint8_t extent_code = 0;
                 if(locptr.size() >= 1) {
                     DecodeResult dr2;
                     dr2.location = locptr;
                     dr2.location.end = dr2.location.begin+1;
                     dr2.name = "Extent";
-                    extent_code = locptr.at(0);
                     dr2.value = QString("0x%1").
-                                arg((locptr.at(0) >> 1) & 0x7f, 2, 16, QChar('0'));
+                                arg(locptr.at(0), 2, 16, QChar('0'));
+                    DecodeResult dr3;
+                    dr3.location = dr2.location;
+                    dr3.name = "Extent match bits";
+                    dr3.value = QString("0x%1").
+                                arg((locptr.at(0) & 0xe0) >> 5, 1, 16, QChar('0'));
+                    dr2.subdecodes.push_back(dr3);
+                    dr3.name = "Extent group number";
+                    dr3.value = QString("0x%1").
+                                arg((locptr.at(0) & 0x1e) >> 1, 1, 16, QChar('0'));
+                    dr2.subdecodes.push_back(dr3);
+                    dr3.name = "Extent number(counts 8 blocks)";
+                    dr3.value = QString("0x%1").
+                                arg((locptr.at(0) & 0x01), 1, 16, QChar('0'));
+                    dr2.subdecodes.push_back(dr3);
                     dr.subdecodes.push_back(dr2);
                     locptr.begin++;
                 }
@@ -621,9 +644,8 @@ public:
                     dr2.location = locptr;
                     dr2.location.end = dr2.location.begin+1;
                     dr2.name = "Records";
-                    extent_code = locptr.at(0);
                     dr2.value = QString("%1").
-                                arg(locptr.at(0) + 0x80 * (extent_code & 1));
+                                arg(locptr.at(0));
                     dr.subdecodes.push_back(dr2);
                     locptr.begin++;
                 }
