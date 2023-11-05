@@ -70,7 +70,7 @@ class BitWriterContext {
 private:
     unsigned int putbuf = 0;
     uchar putlen = 0;
-    unsigned char *output;
+    unsigned char *output = nullptr;
     unsigned int output_len = 0;
     /** short term storage of a small amount of output data
      * Usually no more than 4 bytes. Used to be able to output
@@ -129,8 +129,8 @@ class BitReaderContext {
 private:
     unsigned short getbuf = 0;
     uchar getlen = 0;
-    unsigned char const *input;
-    unsigned int input_len;
+    unsigned char const *input = nullptr;
+    unsigned int input_len = 0;
     /** short term storage of a small amount of input data
      * Usually no more than 4 bytes. Used to be able to eventually
      * input a complete "command" when there is not enough real input
@@ -821,8 +821,8 @@ unsigned int Encode(unsigned char const *in, unsigned int inlen,
 
     EncodeContext *context = BeginEncode();
 
-    int count = 0;
-    for(int i = 0; i < inlen;) {
+    unsigned int count = 0;
+    for(unsigned int i = 0; i < inlen;) {
         unsigned int _inlen = inlen-i;
         unsigned int _outlen = outlen-count;
         Encode(in+i, _inlen, out+count, _outlen, context);
@@ -937,8 +937,8 @@ unsigned int Decode(unsigned char const *in, unsigned int inlen, unsigned char *
 
     DecodeContext *context = BeginDecode();
 
-    int count = 0;
-    for(int i = 0; i < inlen && count < outlen;) {
+    unsigned int count = 0;
+    for(unsigned int i = 0; i < inlen && count < outlen;) {
         unsigned int _inlen = inlen-i;
         unsigned int _outlen = outlen-count;
         Decode(in+i, _inlen, out+count, _outlen, context);

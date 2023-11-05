@@ -13,19 +13,19 @@ unsigned int TestEncode(unsigned char *in, unsigned int inlen,
 
     lzh::EncodeContext *context = lzh::BeginEncode();
 
-    int count = 0;
-    int in_block_size = 1;
-    int out_block_size = 1;
-    for(int i = 0; i < inlen;) {
-        unsigned int _inlen = std::min((int)(inlen-i), in_block_size);
-        unsigned int _outlen = std::min((int)(outlen-count), out_block_size);
+    unsigned int count = 0;
+    unsigned int in_block_size = 1;
+    unsigned int out_block_size = 1;
+    for(unsigned int i = 0; i < inlen;) {
+        unsigned int _inlen = std::min(inlen-i, in_block_size);
+        unsigned int _outlen = std::min(outlen-count, out_block_size);
         lzh::Encode(in+i, _inlen, out+count, _outlen, context);
         i += _inlen;
         count += _outlen;
     }
 
     while(true) {
-        unsigned int _outlen = std::min((int)(outlen-count), out_block_size);
+        unsigned int _outlen = std::min(outlen-count, out_block_size);
         bool result = lzh::EncodeFinal(out+count, _outlen, context);
         count += _outlen;
         if(result)
@@ -44,12 +44,12 @@ unsigned int TestDecode(unsigned char *in, unsigned int inlen, unsigned char *ou
 
     lzh::DecodeContext *context = lzh::BeginDecode();
 
-    int count = 0;
-    int in_block_size = 1;
-    int out_block_size = 1;
-    for(int i = 0; i < inlen;) {
-        unsigned int _inlen = std::min((int)(inlen-i), in_block_size);
-        unsigned int _outlen = std::min((int)(outlen-count), out_block_size);
+    unsigned int count = 0;
+    unsigned int in_block_size = 1;
+    unsigned int out_block_size = 1;
+    for(unsigned int i = 0; i < inlen;) {
+        unsigned int _inlen = std::min(inlen-i, in_block_size);
+        unsigned int _outlen = std::min(outlen-count, out_block_size);
         lzh::Decode(in+i, _inlen, out+count, _outlen, context);
         i += _inlen;
         count += _outlen;
@@ -57,7 +57,7 @@ unsigned int TestDecode(unsigned char *in, unsigned int inlen, unsigned char *ou
 
     while(count < outlen) {
         unsigned int _inlen = 0;
-        unsigned int _outlen = std::min((int)(outlen-count), out_block_size);
+        unsigned int _outlen = std::min(outlen-count, out_block_size);
         lzh::Decode(nullptr, _inlen, out+count, _outlen, context);
         count += _outlen;
     }
