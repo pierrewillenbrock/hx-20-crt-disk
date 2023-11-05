@@ -6,10 +6,11 @@
    https://electrickery.nl/comp/hx20/doc/
  */
 
+#include "hx20-disk-dev.hpp"
+
 #include <stdlib.h>
 #include <string.h>
 #include <fstream>
-#include "hx20-disk-dev.hpp"
 #include <sys/types.h>
 #include <dirent.h>
 #include <errno.h>
@@ -26,10 +27,13 @@
 #include <QStyle>
 #include <QPushButton>
 #include <QToolButton>
-#include "../../dockwidgettitlebar.hpp"
 #include <QMenu>
 #include <QFileDialog>
 #include <QMessageBox>
+
+#include "../../dockwidgettitlebar.hpp"
+#include "tf20drivediskimage.hpp"
+#include "tf20drivedirectory.hpp"
 
 static void hexdump(char const *buf, unsigned int size) {
     uint16_t addr;
@@ -129,11 +133,11 @@ void HX20DiskDevice::setCurrentFilename(int drive_code, std::string const &filen
 }
 
 int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
-                               uint16_t size, uint8_t *buf,
+                               uint16_t size, uint8_t *ibuf,
                                HX20SerialConnection *conn) {
     switch(fnc) {
     case 0x00: { //system reset
-        uint8_t obuf[0x1];
+        uint8_t obuf[0x1] = {0};
         obuf[0x0] = BDOS_OK;
         return conn->sendPacket(did, sid, fnc, 0x1, obuf);
     }
@@ -146,14 +150,14 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
     case 0x0d: { // reset all
         triggerActivityStatus(1);
         triggerActivityStatus(2);
-        uint8_t obuf[1];
+        uint8_t obuf[1] = {0};
         obuf[0] = 0;
         return conn->sendPacket(did, sid, fnc, 1, obuf);
     }
     case 0x0e: { // drive select
-        uint8_t drive_code = buf[0];
+        uint8_t drive_code = ibuf[0];
         triggerActivityStatus(drive_code);
-        uint8_t obuf[1];
+        uint8_t obuf[1] = {0};
         obuf[0] = 0;
         return conn->sendPacket(did, sid, fnc, 1, obuf);
     }
@@ -162,14 +166,16 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         if(size != 0x0f)
             return 0;
         char filename[13];
-        hx20ToUnixFilename(filename,buf+3);
-        uint16_t hx20FcbAddress = (buf[0] << 8) | buf[1];//only usable as key into a fcb map, i guess
-        uint8_t drive_code = buf[2];
-        uint8_t extent = buf[0x0e];
+        hx20ToUnixFilename(filename,ibuf+3);
+        uint16_t hx20FcbAddress = (ibuf[0] << 8) | ibuf[1];//only usable as key into a fcb map, i guess
+        uint8_t user = 0;
+        uint8_t drive_code = ibuf[2] & 0x1f;
+        uint8_t us = (ibuf[2] & 0xe0) | user;
+        uint8_t extent = ibuf[0x0e];
         triggerActivityStatus(drive_code);
         printf("hx20 tries to open %s(extent %d) on drive %d for fcb at 0x%04x.\n",
                filename,extent,drive_code,hx20FcbAddress);
-        uint8_t obuf[1];
+        uint8_t obuf[1] = {0};
         if(drive_code < 1 || drive_code > 2) {
             obuf[0] = BDOS_SELECT_ERROR;
             return conn->sendPacket(did, sid, fnc, 1, obuf);
@@ -182,9 +188,9 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         TF20DriveInterface *drive = this->drive(drive_code).drive.get();
         void *fcb;
         if(fnc == 0x16) {
-            fcb = drive->file_create(buf+3, extent);
+            fcb = drive->file_create(us, ibuf+3, extent);
         } else {
-            fcb = drive->file_open(buf+3, extent);
+            fcb = drive->file_open(us, ibuf+3, extent);
         }
         if(!fcb) {
             obuf[0] = BDOS_FILE_NOT_FOUND;
@@ -204,10 +210,10 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
     case 0x10: { //file close
         if(size != 0x02)
             return 0;
-        uint16_t hx20FcbAddress = (buf[0] << 8) | buf[1];//only usable as key into a fcb map, i guess
+        uint16_t hx20FcbAddress = (ibuf[0] << 8) | ibuf[1];//only usable as key into a fcb map, i guess
         printf("hx20 tries to close fcb at 0x%04x.\n",
                hx20FcbAddress);
-        uint8_t obuf[1];
+        uint8_t obuf[1] = {0};
         if(fcbs.find(hx20FcbAddress) == fcbs.end()) {
             obuf[0] = BDOS_FILE_NOT_FOUND;//fcb unknown
             return conn->sendPacket(did, sid, fnc, 1, obuf);
@@ -223,9 +229,9 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         if(size != 0x0d)
             return 0;
         char pattern[13];
-        hx20ToUnixFilename(pattern,buf+1);
-        uint8_t drive_code = buf[0];
-        uint8_t extent = buf[1+8+3];
+        hx20ToUnixFilename(pattern,ibuf+1);
+        uint8_t drive_code = ibuf[0];
+        uint8_t extent = ibuf[1+8+3];
         printf("hx20 requested first file matching %s\n",
                pattern);
         printf("extent number %d\n",extent);
@@ -233,7 +239,7 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
 
         triggerActivityStatus(drive_code);
 
-        uint8_t obuf[0x21];
+        uint8_t obuf[0x21] = {0};
         if(drive_code < 1 || drive_code > 2) {
             obuf[0] = BDOS_SELECT_ERROR;
             return conn->sendPacket(did, sid, fnc, 33, obuf);
@@ -246,7 +252,9 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         TF20DriveInterface *drive = this->drive(drive_code).drive.get();
 
         std::string filename;
-        obuf[0] = drive->file_find_first(buf+1, extent, obuf+1, filename);
+        uint8_t user = 0;
+        obuf[0] = drive->file_find_first((ibuf[0] & 0xe0) | user,
+                                         ibuf+1, extent, obuf+1, filename);
         dirSearch.drive = drive;
         dirSearch.drive_code = drive_code;
         if(obuf[0] == 0) {
@@ -261,7 +269,7 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         //would the single byte be the driveCode? protocol says to ignore.
         printf("hx20 requested next file\n");
 
-        uint8_t obuf[0x21];
+        uint8_t obuf[0x21] = {0};
 
         std::string filename;
         obuf[0] = dirSearch.drive->file_find_next(obuf+1, filename);
@@ -278,14 +286,16 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         if(size != 0x0d)
             return 0;
         char filename[13];
-        hx20ToUnixFilename(filename,buf+1);
-        uint8_t drive_code = buf[0];
-        uint8_t extent = buf[0x0c];
+        hx20ToUnixFilename(filename,ibuf+1);
+        uint8_t user = 0;
+        uint8_t drive_code = ibuf[0];
+        uint8_t us = (ibuf[0] & 0xe0) | user;
+        uint8_t extent = ibuf[0x0c];
         printf("hx20 tries to delete %s(extent %d) on drive %d.\n",
                filename,extent,drive_code);
         triggerActivityStatus(drive_code);
 
-        uint8_t obuf[0x1];
+        uint8_t obuf[0x1] = {0};
 
         if(!drive(drive_code).drive) {
             obuf[0] = BDOS_READ_ERROR;
@@ -293,7 +303,7 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         }
         TF20DriveInterface *drive = this->drive(drive_code).drive.get();
 
-        obuf[0] = drive->file_remove(buf+1, extent);
+        obuf[0] = drive->file_remove(us, ibuf+1, extent);
 
         setCurrentFilename(drive_code, filename);
 
@@ -302,13 +312,13 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
     case 0x14: { // file read at extent and record position
         if(size != 0x04)
             return 0;
-        uint16_t hx20FcbAddress = (buf[0] << 8) | buf[1];
-        uint8_t extent = buf[2];
-        uint8_t record = buf[3];
+        uint16_t hx20FcbAddress = (ibuf[0] << 8) | ibuf[1];
+        uint8_t extent = ibuf[2];
+        uint8_t record = ibuf[3];
         printf("hx20 tries to read record %d(%d,%d) to fcb at 0x%04x.\n",
                record+extent*128,extent,record,hx20FcbAddress);
 
-        uint8_t obuf[0x83];
+        uint8_t obuf[0x83] = {0};
 
         if(fcbs.find(hx20FcbAddress) == fcbs.end()) {
             obuf[2] = BDOS_FILE_NOT_FOUND;//fcb unknown
@@ -331,14 +341,14 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
     case 0x15: { //file write at extent and record position
         if(size != 0x84)
             return 0;
-        uint16_t hx20FcbAddress = (buf[0] << 8) | buf[1];
-        uint8_t extent = buf[2];
-        uint8_t record = buf[3];
+        uint16_t hx20FcbAddress = (ibuf[0] << 8) | ibuf[1];
+        uint8_t extent = ibuf[2];
+        uint8_t record = ibuf[3];
         printf("hx20 tries to write record %d(%d,%d) to fcb at 0x%04x.\n",
                record+extent*128,extent,record,hx20FcbAddress);
 
 
-        uint8_t obuf[3];
+        uint8_t obuf[3] = {0};
 
         if(fcbs.find(hx20FcbAddress) == fcbs.end()) {
             obuf[2] = BDOS_FILE_NOT_FOUND;//fcb unknown
@@ -349,7 +359,7 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         uint8_t cur_extent;
         uint16_t cur_record;
         obuf[2] = fcbs[hx20FcbAddress].drive->file_write(fcbs[hx20FcbAddress].fcb,
-                                                         buf+4, record+extent*128, cur_extent, cur_record);
+                                                         ibuf+4, record+extent*128, cur_extent, cur_record);
         obuf[0] = (cur_extent << 1) | (cur_record >> 8);
         obuf[1] = cur_record;
         setCurrentFilename(fcbs[hx20FcbAddress].drive_code,
@@ -362,15 +372,18 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
             return 0;
         char filename_old[13];
         char filename_new[13];
-        hx20ToUnixFilename(filename_old,buf+1);
-        hx20ToUnixFilename(filename_new,buf+0x11);
-        uint8_t drive_code = buf[0];
-        uint8_t extent_old = buf[0x0c];
-        uint8_t extent_new = buf[0x1c];
+        hx20ToUnixFilename(filename_old,ibuf+1);
+        hx20ToUnixFilename(filename_new,ibuf+0x11);
+        uint8_t drive_code = ibuf[0];
+        uint8_t user = 0;
+        uint8_t us_old = (ibuf[0] & 0xe0) | user;
+        uint8_t extent_old = ibuf[0x0c];
+        uint8_t us_new = ibuf[0x10];
+        uint8_t extent_new = ibuf[0x1c];
         triggerActivityStatus(drive_code);
         printf("hx20 tries to rename file %s(extent %d) to %s(%d) on drive %d\n",
                filename_old,extent_old,filename_new,extent_new,drive_code);
-        uint8_t obuf[1];
+        uint8_t obuf[1] = {0};
         if(drive_code < 1 || drive_code > 2) {
             obuf[0] = BDOS_SELECT_ERROR;
             return conn->sendPacket(did, sid, fnc, 1, obuf);
@@ -381,14 +394,15 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         }
         TF20DriveInterface *drive = this->drive(drive_code).drive.get();
 
-        obuf[0] = drive->file_rename(buf+1, extent_old, buf+0x11, extent_new);
+        obuf[0] = drive->file_rename(us_old, ibuf+1, extent_old,
+                                     us_new, ibuf+0x11, extent_new);
 
         setCurrentFilename(drive_code, filename_new);
 
         return conn->sendPacket(did, sid, fnc, 1, obuf);
     }
     case 0x1a: { //sets the BDOS buffer to memory address 0x80; no parameters
-        uint8_t obuf[0x1];
+        uint8_t obuf[0x1] = {0};
         obuf[0x0] = BDOS_OK;
         return conn->sendPacket(did, sid, fnc, 0x1, obuf);
     }
@@ -396,26 +410,26 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         //this sets the current drive to be write protected until eiter
         //reset all(0xd) (or reset selective, if we find it)
         //no parameters.
-        uint8_t obuf[0x1];
+        uint8_t obuf[0x1] = {0};
         obuf[0x0] = BDOS_OK;
         return conn->sendPacket(did, sid, fnc, 0x1, obuf);
     }
     case 0x20: { //broken; set user num
         //tries to call BDOS function 64 instead of 32.
         //buf[0]: user number
-        uint8_t obuf[0x1];
+        uint8_t obuf[0x1] = {0};
         obuf[0x0] = BDOS_OK;
         return conn->sendPacket(did, sid, fnc, 0x1, obuf);
     }
     case 0x21: { //read record from file
         if(size != 0x05)
             return 0;
-        uint16_t hx20FcbAddress = (buf[0] << 8) | buf[1];
-        uint32_t record = (buf[0x4] << 16) | (buf[0x3] << 8) | buf[0x2];
+        uint16_t hx20FcbAddress = (ibuf[0] << 8) | ibuf[1];
+        uint32_t record = (ibuf[0x4] << 16) | (ibuf[0x3] << 8) | ibuf[0x2];
         printf("hx20 tries to read record %d to fcb at 0x%04x.\n",
                record,hx20FcbAddress);
 
-        uint8_t obuf[0x83];
+        uint8_t obuf[0x83] = {0};
 
         if(fcbs.find(hx20FcbAddress) == fcbs.end()) {
             obuf[2] = BDOS_FILE_NOT_FOUND;//fcb unknown
@@ -438,13 +452,13 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
     case 0x22: { //write record to file
         if(size != 0x85)
             return 0;
-        uint16_t hx20FcbAddress = (buf[0] << 8) | buf[1];
-        uint32_t record = (buf[0x84] << 16) | (buf[0x83] << 8) | buf[0x82];
+        uint16_t hx20FcbAddress = (ibuf[0] << 8) | ibuf[1];
+        uint32_t record = (ibuf[0x84] << 16) | (ibuf[0x83] << 8) | ibuf[0x82];
         printf("hx20 tries to write record %d to fcb at 0x%04x.\n",
                record,hx20FcbAddress);
 
 
-        uint8_t obuf[3];
+        uint8_t obuf[3] = {0};
 
         if(fcbs.find(hx20FcbAddress) == fcbs.end()) {
             obuf[2] = BDOS_FILE_NOT_FOUND;//fcb unknown
@@ -455,7 +469,7 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         uint8_t cur_extent;
         uint16_t cur_record;
         obuf[2] = fcbs[hx20FcbAddress].drive->file_write(fcbs[hx20FcbAddress].fcb,
-                                                         buf+2, record, cur_extent, cur_record);
+                                                         ibuf+2, record, cur_extent, cur_record);
         obuf[0] = (cur_extent << 1) | (cur_record >> 8);
         obuf[1] = cur_record;
         setCurrentFilename(fcbs[hx20FcbAddress].drive_code,
@@ -466,10 +480,10 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
     case 0x23: { //file size calculation
         if(size != 0x02)
             return 0;
-        uint16_t hx20FcbAddress = (buf[0] << 8) | buf[1];//only usable as key into a fcb map, i guess
+        uint16_t hx20FcbAddress = (ibuf[0] << 8) | ibuf[1];//only usable as key into a fcb map, i guess
         printf("hx20 tries to calculate size of fcb at 0x%04x.\n",
                hx20FcbAddress);
-        uint8_t obuf[6];
+        uint8_t obuf[6] = {0};
         if(fcbs.find(hx20FcbAddress) == fcbs.end()) {
             obuf[5] = BDOS_FILE_NOT_FOUND;//fcb unknown
             return conn->sendPacket(did, sid, fnc, 6, obuf);
@@ -495,10 +509,10 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
     case 0x24: {//file tell
         if(size != 0x02)
             return 0;
-        uint16_t hx20FcbAddress = (buf[0] << 8) | buf[1];//only usable as key into a fcb map, i guess
+        uint16_t hx20FcbAddress = (ibuf[0] << 8) | ibuf[1];//only usable as key into a fcb map, i guess
         printf("hx20 tries to tell position of fcb at 0x%04x.\n",
                hx20FcbAddress);
-        uint8_t obuf[4];
+        uint8_t obuf[4] = {0};
         if(fcbs.find(hx20FcbAddress) == fcbs.end()) {
             obuf[3] = BDOS_FILE_NOT_FOUND;//fcb unknown
             return conn->sendPacket(did, sid, fnc, 6, obuf);
@@ -517,22 +531,22 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         return conn->sendPacket(did, sid, fnc, 4, obuf);
     }
     case 0x27: { //clear all file handles
-        uint8_t obuf[0x1];
+        uint8_t obuf[0x1] = {0};
         obuf[0x0] = BDOS_OK;
         return conn->sendPacket(did, sid, fnc, 0x1, obuf);
     }
     case 0x79: {//flush HXBIOS sector cache
-        uint8_t obuf[0x1];
+        uint8_t obuf[0x1] = {0};
         obuf[0x0] = BDOS_OK;
         return conn->sendPacket(did, sid, fnc, 0x1, obuf);
     }
     case 0x7a: { // disk all copy
         if(size != 0x1)
             return 0;
-        uint8_t drive_code = buf[0];
+        uint8_t drive_code = ibuf[0];
         printf("hx20 tries to copy disk in drive %d\n",
                drive_code);
-        uint8_t obuf[0x3];
+        uint8_t obuf[0x3] = {0};
         obuf[0x0] = 0xff;//msb of currently formatted track number
         obuf[0x1] = 0xff;//lsb of currently formatted track number
         triggerActivityStatus(1);
@@ -587,12 +601,12 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
     case 0x7b: { //direct write going through BDOS caches(that exclude HXBIOS caches)
         if(size != 0x83)
             return 0;
-        uint8_t drive_code = buf[0];
-        uint8_t track = buf[1];
-        uint8_t sector = buf[2];//128 byte sectors
+        uint8_t drive_code = ibuf[0];
+        uint8_t track = ibuf[1];
+        uint8_t sector = ibuf[2];//128 byte sectors
         printf("hx20 tries do direct read from drive %d, track %d, sector %d\n",
                drive_code,track,sector);
-        uint8_t obuf[0x1];
+        uint8_t obuf[0x1] = {0};
         triggerActivityStatus(drive_code);
 
         if(drive_code < 1 || drive_code > 2) {
@@ -605,16 +619,16 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         }
         TF20DriveInterface *drive = this->drive(drive_code).drive.get();
 
-        obuf[0x0] = drive->disk_write(track, sector, buf+3);
+        obuf[0x0] = drive->disk_write(track, sector, ibuf+3);
         return conn->sendPacket(did, sid, fnc, 0x1, obuf);
     }
     case 0x7c: { // disk formatting
         if(size != 0x1)
             return 0;
-        uint8_t drive_code = buf[0];
+        uint8_t drive_code = ibuf[0];
         printf("hx20 tries to format disk in drive %d\n",
                drive_code);
-        uint8_t obuf[0x3];
+        uint8_t obuf[0x3] = {0};
         triggerActivityStatus(drive_code);
 
         if(drive_code < 1 || drive_code > 2) {
@@ -653,7 +667,7 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         if(size != 0x1)
             return 0;
         printf("hx20 tries to create a system disk in 2nd drive from the system in 1st drive\n");
-        uint8_t obuf[0x3];
+        uint8_t obuf[0x3] = {0};
         triggerActivityStatus(1);
         triggerActivityStatus(2);
 
@@ -700,12 +714,12 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         uint8_t dir_entry[32];
         std::string filename;
         unixToHx20Filename(pattern, unix_pattern);
-        uint8_t search_res = drive_src->file_find_first(pattern, 0, dir_entry, filename);
+        uint8_t search_res = drive_src->file_find_first(0, pattern, 0, dir_entry, filename);
         while(search_res == 0) {
             char fn[14] = {0};
             hx20ToUnixFilename(fn, dir_entry+1);
             printf("%s...\n", fn);
-            void *fcb_src = drive_src->file_open(dir_entry+1, 0);
+            void *fcb_src = drive_src->file_open(0, dir_entry+1, 0);
             if(!fcb_src) {
                 printf("Failed to open source\n");
                 obuf[0x0] = 0xff;//
@@ -713,8 +727,8 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
                 obuf[0x2] = BDOS_FILE_NOT_FOUND;
                 return conn->sendPacket(did, sid, fnc, 3, obuf);
             }
-            drive_dst->file_remove(dir_entry+1, 0);
-            void *fcb_dst = drive_dst->file_create(dir_entry+1, 0);
+            drive_dst->file_remove(0, dir_entry+1, 0);
+            void *fcb_dst = drive_dst->file_create(0, dir_entry+1, 0);
             if(!fcb_dst) {
                 printf("Failed to create destination\n");
                 drive_src->file_close(fcb_src);
@@ -763,10 +777,10 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
     case 0x7e: { //disk free size calculation
         if(size != 0x01)
             return 0;
-        uint8_t drive_code = buf[0];
+        uint8_t drive_code = ibuf[0];
         printf("hx20 tries to calculate free space of drive %d\n",
                drive_code);
-        uint8_t obuf[2];
+        uint8_t obuf[2] = {0};
         triggerActivityStatus(drive_code);
 
         if(drive_code < 1 || drive_code > 2) {
@@ -788,12 +802,12 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
     case 0x7f: { //direct read going through BDOS caches(that exclude HXBIOS caches)
         if(size != 0x03)
             return 0;
-        uint8_t drive_code = buf[0];
-        uint8_t track = buf[1];
-        uint8_t sector = buf[2];//128 byte sectors
+        uint8_t drive_code = ibuf[0];
+        uint8_t track = ibuf[1];
+        uint8_t sector = ibuf[2];//128 byte sectors
         printf("hx20 tries do direct read from drive %d, track %d, sector %d\n",
                drive_code,track,sector);
-        uint8_t obuf[0x81];
+        uint8_t obuf[0x81] = {0};
         triggerActivityStatus(drive_code);
 
         if(drive_code < 1 || drive_code > 2) {
@@ -814,14 +828,14 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         if(size != 1)
             return 0;
         char unixfilename[13];
-        snprintf(unixfilename,13,"BOOT%02X.SYS",buf[0]);
+        snprintf(unixfilename,13,"BOOT%02X.SYS",ibuf[0]);
         drive(1).last_file->setText(unixfilename);
         printf("hx20 requested %s\n",unixfilename);
         triggerActivityStatus(1);
         uint8_t filename[11];
         unixToHx20Filename(filename, unixfilename);
 
-        uint8_t obuf[256+1];//need one more byte space so the second record fits in full
+        uint8_t obuf[256+1] = {0};//need one more byte space so the second record fits in full
 
         if(!drive(1).drive) {
             obuf[0] = BDOS_READ_ERROR;
@@ -829,7 +843,7 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         }
         TF20DriveInterface *drive = this->drive(1).drive.get();
 
-        void *fcb = drive->file_open(filename, 0);
+        void *fcb = drive->file_open(0, filename, 0);
         if(!fcb) {
             obuf[0] = BDOS_FILE_NOT_FOUND;
             return conn->sendPacket(did, sid, fnc, 256, obuf);
@@ -850,34 +864,42 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         return conn->sendPacket(did, sid, fnc, 256, obuf);
     }
     case 0x81: { //load open
-        /*general format of firmware file:
-          256 bytes header: {
-           0:     unused
-           1-2:   code size, little endian
-           3-255: unused
-          }
-          code
-          relocation data: bit field determining which code bytes need
-                                   relocation, msb first
+        /* ibuf:
+         * 0-10: filename
+         * 11: reloc type
+         * 12,13: reloc address
+         *
+         * obuf:
+         * 0: status
+         * 1,2: code size
+         *
+         * general format of firmware file:
+         * 256 bytes header: {
+         *  0:     unused
+         *  1-2:   code size, little endian
+         *  3-255: unused
+         * }
+         * code
+         * relocation data: bit field determining which code bytes need
+         *                          relocation, msb first
          */
 
-        char filename[13];
-        hx20ToUnixFilename(filename,buf);
-        drive(1).last_file->setText(filename);
+        std::string filename = hx20ToUnixFilename(ibuf);
+        drive(1).last_file->setText(QString::fromStdString(filename));
         printf("hx20 requested %s\n",
-               filename);
-        uint8_t reloc_type = buf[11];
+               filename.c_str());
+        uint8_t reloc_type = ibuf[11];
         printf("relocation: %s\n",
                reloc_type==0?"none":
                reloc_type==1?"from starting address":
                reloc_type==2?"from ending address":
                "unknown");
-        uint16_t reloc_address = buf[13] | (buf[12] << 8);
+        uint16_t reloc_address = ibuf[13] | (ibuf[12] << 8);
         printf("address: 0x%04x\n",
                reloc_address
               );
 
-        uint8_t obuf[3];
+        uint8_t obuf[3] = {0};
 
         if(!drive(1).drive) {
             obuf[0] = BDOS_READ_ERROR;
@@ -886,25 +908,18 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         TF20DriveInterface *drive = this->drive(1).drive.get();
         triggerActivityStatus(1);
 
-        void *fcb = drive->file_open(buf, 0);
+        void *fcb = drive->file_open(0, ibuf, 0);
         if(!fcb) {
             obuf[0] = BDOS_FILE_NOT_FOUND;
-            return conn->sendPacket(did, sid, fnc, 257, obuf);
+            return conn->sendPacket(did, sid, fnc, 3, obuf);
         }
-        uint8_t cur_extent;
-        uint16_t cur_record;
-        obuf[0] = drive->file_read(fcb, 0, cur_extent, cur_record, obuf+1);
-        if(obuf[0] != 0) {
-            drive->file_close(fcb);
-            return conn->sendPacket(did, sid, fnc, 257, obuf);
-        }
-        obuf[0] = drive->file_read(fcb, 1, cur_extent, cur_record, obuf+1+128);
 
         uint8_t extent;
         uint16_t record;
         uint32_t records;
         drive->file_size(fcb, extent, record, records);
         load_buffer.resize(records * 128);
+        printf("drive reported %d records\n", records);
         for(uint32_t r = 0; r < records; r++) {
             obuf[0] = drive->file_read(fcb, r, extent, record, load_buffer.data() + 128*r);
             if(obuf[0] != 0) {
@@ -956,20 +971,20 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         hexdump((char *)obuf,3);
         return conn->sendPacket(did, sid, fnc, 3, obuf);
     }
-    case 0x82: { //load close
+    case 0x82: { //load close (noop on the TF20) TODO check if this is being called.
         load_buffer.clear();
-        uint8_t obuf[1];
+        uint8_t obuf[1] = {0};
         obuf[0] = 0x00;
         return conn->sendPacket(did, sid, fnc, 1, obuf);
     }
     case 0x83: { //read one block(goes with 0x81: load open)
-        unsigned int record = (buf[0] << 8) | buf[1];
+        unsigned int record = (ibuf[0] << 8) | ibuf[1];
         printf("hx20 requested record 0x%02x\n",record);
-        uint8_t obuf[2+128+1];
+        uint8_t obuf[2+128+1] = {0};
         triggerActivityStatus(1);
         if(load_buffer.empty()) {
-            obuf[1] = buf[1]+1;
-            obuf[0] = buf[0]+((buf[1] == 0xff)?1:0);
+            obuf[1] = ibuf[1]+1;
+            obuf[0] = ibuf[0]+((ibuf[1] == 0xff)?1:0);
             obuf[2+128] = BDOS_FILE_NOT_FOUND;
 
             hexdump((char *)obuf,128+3);
@@ -979,11 +994,14 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         unsigned int code_size = (unsigned char)load_buffer[1] |
                                  ((unsigned char)load_buffer[2] << 8);
 
-        obuf[1] = buf[1]+1;
-        obuf[0] = buf[0]+((buf[1] == 0xff)?1:0);
-        memcpy(obuf+2,load_buffer.data() + 0x100 + record*128,128);
-
-        obuf[2+128] = record*128 > code_size?0xff:0x00;
+        obuf[1] = ibuf[1]+1;
+        obuf[0] = ibuf[0]+((ibuf[1] == 0xff)?1:0);
+        if(load_buffer.size() >= 0x100 + record*128 + 128) {
+            memcpy(obuf+2,load_buffer.data() + 0x100 + record*128,128);
+            obuf[2+128] = record*128 > code_size?BDOS_FILE_NOT_FOUND:BDOS_OK;
+        } else {
+            obuf[2+128] = BDOS_FILE_NOT_FOUND;
+        }
 
         hexdump((char *)obuf,128+3);
         return conn->sendPacket(did, sid, fnc, 2+128+1, obuf);
@@ -992,9 +1010,9 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         printf("HX20DiskDevice: got packet: sid = 0x%04x, did = 0x%04x, "
                "fnc = 0x%02x, size = 0x%04x\n",
                sid,did,fnc,size);
-        hexdump((char *)buf,size);
+        hexdump((char *)ibuf,size);
         //TFDOS returns 1 byte/BDOS_OK for anything it does not know
-        uint8_t obuf[0x1];
+        uint8_t obuf[0x1] = {0};
         obuf[0x0] = BDOS_OK;
         return conn->sendPacket(did, sid, fnc, 0x1, obuf);
     }

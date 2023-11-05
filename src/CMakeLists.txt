@@ -12,6 +12,8 @@ add_executable(hx-20-crt
     hx20-devices/crt/hx20-crt-dev-text-cfg.ui
     hx20-devices/disk/hx20-disk-dev.cpp
     hx20-devices/disk/tf20-adapters.cpp
+    hx20-devices/disk/tf20drivediskimage.cpp
+    hx20-devices/disk/tf20drivedirectory.cpp
     hx20-devices/disk/disk-drive-adapters.cpp
     hx20-ser-proto.cpp
     mainwindow.cpp
