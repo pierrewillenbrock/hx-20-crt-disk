@@ -327,11 +327,11 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         triggerActivityStatus(fcbs[hx20FcbAddress].drive_code);
 
         uint8_t cur_extent;
-        uint16_t cur_record;
+        uint8_t cur_record;
         obuf[0x82] = fcbs[hx20FcbAddress].drive->file_read(fcbs[hx20FcbAddress].fcb,
                                                            record+extent*128, cur_extent, cur_record,
                                                            obuf+2);
-        obuf[0] = (cur_extent << 1) | (cur_record >> 8);
+        obuf[0] = cur_extent;
         obuf[1] = cur_record;
         setCurrentFilename(fcbs[hx20FcbAddress].drive_code,
                            fcbs[hx20FcbAddress].filename);
@@ -357,10 +357,10 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         triggerActivityStatus(fcbs[hx20FcbAddress].drive_code);
 
         uint8_t cur_extent;
-        uint16_t cur_record;
+        uint8_t cur_record;
         obuf[2] = fcbs[hx20FcbAddress].drive->file_write(fcbs[hx20FcbAddress].fcb,
                                                          ibuf+4, record+extent*128, cur_extent, cur_record);
-        obuf[0] = (cur_extent << 1) | (cur_record >> 8);
+        obuf[0] = cur_extent;
         obuf[1] = cur_record;
         setCurrentFilename(fcbs[hx20FcbAddress].drive_code,
                            fcbs[hx20FcbAddress].filename);
@@ -438,11 +438,11 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         triggerActivityStatus(fcbs[hx20FcbAddress].drive_code);
 
         uint8_t cur_extent;
-        uint16_t cur_record;
+        uint8_t cur_record;
         obuf[0x82] = fcbs[hx20FcbAddress].drive->file_read(fcbs[hx20FcbAddress].fcb,
                                                            record, cur_extent, cur_record,
                                                            obuf+2);
-        obuf[0] = (cur_extent << 1) | (cur_record >> 8);
+        obuf[0] = cur_extent;
         obuf[1] = cur_record;
         setCurrentFilename(fcbs[hx20FcbAddress].drive_code,
                            fcbs[hx20FcbAddress].filename);
@@ -467,10 +467,10 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         triggerActivityStatus(fcbs[hx20FcbAddress].drive_code);
 
         uint8_t cur_extent;
-        uint16_t cur_record;
+        uint8_t cur_record;
         obuf[2] = fcbs[hx20FcbAddress].drive->file_write(fcbs[hx20FcbAddress].fcb,
                                                          ibuf+2, record, cur_extent, cur_record);
-        obuf[0] = (cur_extent << 1) | (cur_record >> 8);
+        obuf[0] = cur_extent;
         obuf[1] = cur_record;
         setCurrentFilename(fcbs[hx20FcbAddress].drive_code,
                            fcbs[hx20FcbAddress].filename);
@@ -491,7 +491,7 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         triggerActivityStatus(fcbs[hx20FcbAddress].drive_code);
 
         uint8_t cur_extent;
-        uint16_t cur_record;
+        uint8_t cur_record;
         uint32_t records;
         obuf[5] = fcbs[hx20FcbAddress].drive->file_size(fcbs[hx20FcbAddress].fcb,
                                                          cur_extent, cur_record, records);
@@ -499,8 +499,8 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         setCurrentFilename(fcbs[hx20FcbAddress].drive_code,
                            fcbs[hx20FcbAddress].filename);
 
-        obuf[0] = (cur_extent << 1) | ((cur_record > 0x80)?1:0);//extent number(unused?)
-        obuf[1] = (cur_record & 0xff) - ((cur_record > 0x80)?0x80:0);//current record number(unused?)
+        obuf[0] = cur_extent;//extent number(unused?)
+        obuf[1] = cur_record;//current record number(unused?)
         obuf[2] = records & 0xff;//R0 (low byte of record count)
         obuf[3] = (records & 0xff00) >> 8;//R1 (high byte of record count)
         obuf[4] = (records & 0xff0000) >> 16;//R2 (unused?)
@@ -738,7 +738,7 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
                 return conn->sendPacket(did, sid, fnc, 3, obuf);
             }
             uint8_t extent;
-            uint16_t record;
+            uint8_t record;
             uint32_t records;
             drive_src->file_size(fcb_src, extent, record, records);
             for(uint32_t r = 0; r < records; r++) {
@@ -849,7 +849,7 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
             return conn->sendPacket(did, sid, fnc, 256, obuf);
         }
         uint8_t cur_extent;
-        uint16_t cur_record;
+        uint8_t cur_record;
         obuf[0] = drive->file_read(fcb, 0, cur_extent, cur_record, obuf+1);
         if(obuf[0] != 0) {
             obuf[0] = BDOS_FILE_NOT_FOUND;
@@ -915,7 +915,7 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         }
 
         uint8_t extent;
-        uint16_t record;
+        uint8_t record;
         uint32_t records;
         drive->file_size(fcb, extent, record, records);
         load_buffer.resize(records * 128);

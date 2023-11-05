@@ -537,23 +537,23 @@ uint8_t TF20DriveDiskImage::file_rename(uint8_t old_us, uint8_t const *old_filen
 }
 
 uint8_t TF20DriveDiskImage::file_read(void *_fcb, uint32_t record,
-                  uint8_t &cur_extent, uint16_t &cur_record, void *buffer) {
+                  uint8_t &cur_extent, uint8_t &cur_record, void *buffer) {
     ImgFCB *fcb = reinterpret_cast<ImgFCB *>(_fcb);
-    cur_extent = ((record >> 8) << 1) | (((record & 0xff) > 0x80)?1:0);
-    cur_record = (record & 0xff) - (((record & 0xff) > 0x80)?0x80:0);
+    cur_extent = (record >> 7);
+    cur_record = record & 0x7f;
     return fcb->read(record, (uint8_t*)buffer);
 }
 
 uint8_t TF20DriveDiskImage::file_write(void *_fcb, void const *buffer, uint32_t record,
-                   uint8_t &cur_extent, uint16_t &cur_record) {
+                   uint8_t &cur_extent, uint8_t &cur_record) {
     ImgFCB *fcb = reinterpret_cast<ImgFCB *>(_fcb);
-    cur_extent = ((record >> 8) << 1) | (((record & 0xff) > 0x80)?1:0);
-    cur_record = (record & 0xff) - (((record & 0xff) > 0x80)?0x80:0);
+    cur_extent = (record >> 7);
+    cur_record = record & 0x7f;
     return fcb->write(record, (uint8_t const *)buffer);
 }
 
 uint8_t TF20DriveDiskImage::file_size(void *_fcb, uint8_t &extent,
-                  uint16_t &record, uint32_t &records) {
+                  uint8_t &record, uint32_t &records) {
     ImgFCB *fcb = reinterpret_cast<ImgFCB *>(_fcb);
     uint64_t sz = fcb->size();
     records = (sz+127)/128;

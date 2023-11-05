@@ -46,13 +46,13 @@ public:
                              uint8_t new_us, uint8_t const *new_filename, uint8_t new_extent) =0;
     //0x21
     virtual uint8_t file_read(void *fcb, uint32_t record,
-                              uint8_t &cur_extent, uint16_t &cur_record, void *buffer) =0;
+                              uint8_t &cur_extent, uint8_t &cur_record, void *buffer) =0;
     //0x22
     virtual uint8_t file_write(void *fcb, void const *buffer, uint32_t record,
-                               uint8_t &cur_extent, uint16_t &cur_record) =0;
+                               uint8_t &cur_extent, uint8_t &cur_record) =0;
     //0x23
     virtual uint8_t file_size(void *fcb, uint8_t &extent,
-                              uint16_t &record, uint32_t &records) =0;
+                              uint8_t &record, uint32_t &records) =0;
     //0x24
     virtual uint8_t file_tell(void *fcb, uint32_t &records) =0;
     //0x7b
