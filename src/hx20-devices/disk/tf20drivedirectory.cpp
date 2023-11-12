@@ -151,12 +151,10 @@ private:
     std::fstream st;
 public:
     DirFCB(char const *filename, bool create = false);
-    bool good();
     uint64_t size();//in bytes
     uint64_t tell();//in bytes
     uint8_t write(uint32_t record,uint8_t const *buf);
     uint8_t read(uint32_t record,uint8_t *buf);
-    void close();
 };
 
 DirFCB::DirFCB(char const *filename, bool create) {
@@ -165,10 +163,12 @@ DirFCB::DirFCB(char const *filename, bool create) {
         st.close();
     }
     st.open(filename, std::ios::in|std::ios::out);
-}
-
-bool DirFCB::good() {
-    return st.good();
+    if(!st.good()) {
+        if(create)
+            throw BDOSError(BDOS_WRITE_ERROR);
+        else
+            throw BDOSError(BDOS_FILE_NOT_FOUND);
+    }
 }
 
 uint64_t DirFCB::size() {
@@ -204,9 +204,6 @@ uint8_t DirFCB::read(uint32_t record,uint8_t *buf) {
     return BDOS_OK;
 }
 
-void DirFCB::close() {
-}
-
 TF20DriveDirectory::TF20DriveDirectory(std::string const &base_dir)
     : base_dir(base_dir)
 {
@@ -220,131 +217,126 @@ void TF20DriveDirectory::reset() {
 void *TF20DriveDirectory::file_open(uint8_t us, uint8_t const *filename, uint8_t extent) {
     //ios::nocreate and ios::noreplace
     std::string unixfilename = hx20ToUnixFilename(filename);
-    DirFCB *fcb = new DirFCB((base_dir + "/" + unixfilename).c_str(), false);;
-    if(!fcb->good()) {
-        delete fcb;
-        fcb = new DirFCB((base_dir + "/." + unixfilename).c_str(), false);;
-        if(!fcb->good()) {
-            delete fcb;
-            fcb = nullptr;
-        }
+    try {
+        return new DirFCB((base_dir + "/" + unixfilename).c_str(), false);;
+    } catch (BDOSError const &e) {
     }
-    return fcb;
+    return new DirFCB((base_dir + "/." + unixfilename).c_str(), false);;
 }
 
 void TF20DriveDirectory::file_close(void *_fcb) {
     DirFCB *fcb = reinterpret_cast<DirFCB *>(_fcb);
-    fcb->close();
     delete fcb;
 }
 
-uint8_t TF20DriveDirectory::file_find_first(uint8_t us, uint8_t const *pattern, uint8_t extent, void *dir_entry, std::string &filename) {
+void TF20DriveDirectory::file_find_first(uint8_t us, uint8_t const *pattern, uint8_t extent, void *dir_entry, std::string &filename) {
     uint8_t *obuf = (uint8_t *)dir_entry;
     std::string unixpattern = hx20ToUnixFilename(pattern);
     dirSearch.reset(new DirSearch("disk", unixpattern));
     if(!dirSearch->good()) {
-        return BDOS_READ_ERROR;
+        throw BDOSError(BDOS_READ_ERROR);
     }
 
     uint8_t res = dirSearch->findNext(obuf);
-    if(res == 0)
+    if(res == BDOS_OK)
         filename = dirSearch->filename;
-    return res;
+    else
+        throw BDOSError(res);
 }
 
-uint8_t TF20DriveDirectory::file_find_next(void *dir_entry, std::string &filename) {
+void TF20DriveDirectory::file_find_next(void *dir_entry, std::string &filename) {
     uint8_t *obuf = (uint8_t *)dir_entry;
     uint8_t res = dirSearch->findNext(obuf);
-    if(res == 0)
+    if(res == BDOS_OK)
         filename = dirSearch->filename;
-    return res;
+    else
+        throw BDOSError(res);
 }
 
-uint8_t TF20DriveDirectory::file_remove(uint8_t us, uint8_t const *filename, uint8_t extent) {
+void TF20DriveDirectory::file_remove(uint8_t us, uint8_t const *filename, uint8_t extent) {
     std::string unixfilename = hx20ToUnixFilename(filename);
 
     if(unlink((base_dir+ "/" +unixfilename).c_str()) == -1) {
         if(errno == ENOENT) {
             if(unlink((base_dir+ "/." +unixfilename).c_str()) == -1) {
                 if(errno == ENOENT)
-                    return BDOS_FILE_NOT_FOUND;
+                    throw BDOSError(BDOS_FILE_NOT_FOUND);
                 else if(errno == EROFS)
-                    return BDOS_WRITE_PROTECT_ERROR1;
+                    throw BDOSError(BDOS_DISK_WRITE_PROTECT_ERROR);
                 else
-                    return BDOS_WRITE_ERROR;
+                    throw BDOSError(BDOS_WRITE_ERROR);
             }
         } else if(errno == EROFS)
-            return BDOS_WRITE_PROTECT_ERROR1;
+            throw BDOSError(BDOS_DISK_WRITE_PROTECT_ERROR);
         else
-            return BDOS_WRITE_ERROR;
+            throw BDOSError(BDOS_WRITE_ERROR);
     }
-
-    return 0x00;
 }
 
 void *TF20DriveDirectory::file_create(uint8_t us, uint8_t const *filename, uint8_t extent) {
     //ios::nocreate and ios::noreplace
     std::string unixfilename = hx20ToUnixFilename(filename);
 
-    DirFCB *fcb = new DirFCB((base_dir + "/" + unixfilename).c_str(), false);;
-    if(!fcb->good()) {
-        delete fcb;
-        fcb = new DirFCB((base_dir + "/." + unixfilename).c_str(), false);;
+    try {
+        return new DirFCB((base_dir + "/" + unixfilename).c_str(), false);
+    } catch(BDOSError const &e) {
     }
-    if(!fcb->good()) {
-        delete fcb;
-        fcb = new DirFCB((base_dir + "/" + unixfilename).c_str(), true);
+    try {
+        return new DirFCB((base_dir + "/." + unixfilename).c_str(), false);;
+    } catch(BDOSError const &e) {
     }
-    return fcb;
+    return new DirFCB((base_dir + "/" + unixfilename).c_str(), true);
 }
 
-uint8_t TF20DriveDirectory::file_rename(uint8_t old_us, uint8_t const *old_filename, uint8_t old_extent,
-                 uint8_t new_us, uint8_t const *new_filename, uint8_t new_extent) {
-        std::string unixfilename_old = hx20ToUnixFilename(old_filename);
-        std::string unixfilename_new = hx20ToUnixFilename(new_filename);
+void TF20DriveDirectory::file_rename(uint8_t old_us, uint8_t const *old_filename, uint8_t old_extent,
+                                     uint8_t new_us, uint8_t const *new_filename, uint8_t new_extent) {
+    std::string unixfilename_old = hx20ToUnixFilename(old_filename);
+    std::string unixfilename_new = hx20ToUnixFilename(new_filename);
 
-        //0xff if source file not existant, or the destination already
-        //exists(need to check against basic docs of rename
-        //command -- result: basic checks for existing destination)
-        //if our unix-rename fails, we do a write error(0xfb)
-        if(rename((base_dir+"/"+unixfilename_old).c_str(),
-                  (base_dir+"/"+unixfilename_new).c_str()) == -1) {
-            if(errno == ENOENT) {
+    //0xff if source file not existant, or the destination already
+    //exists(need to check against basic docs of rename
+    //command -- result: basic checks for existing destination)
+    //if our unix-rename fails, we do a write error(0xfb)
+    if(rename((base_dir+"/"+unixfilename_old).c_str(),
+              (base_dir+"/"+unixfilename_new).c_str()) == -1) {
+        if(errno == ENOENT) {
             if(rename((base_dir+"/."+unixfilename_old).c_str(),
                       (base_dir+"/."+unixfilename_new).c_str()) == -1) {
                 if(errno == ENOENT)
-                    return BDOS_FILE_NOT_FOUND;
+                    throw BDOSError(BDOS_FILE_NOT_FOUND);
                 else if(errno == EROFS)
-                    return BDOS_WRITE_PROTECT_ERROR1;
+                    throw BDOSError(BDOS_DISK_WRITE_PROTECT_ERROR);
                 else
-                    return BDOS_WRITE_ERROR;
+                    throw BDOSError(BDOS_WRITE_ERROR);
             }
         } else if(errno == EROFS)
-            return BDOS_WRITE_PROTECT_ERROR1;
-            else
-                return BDOS_WRITE_ERROR;
-        }
-
-        return 0x00;//rename done
+            throw BDOSError(BDOS_DISK_WRITE_PROTECT_ERROR);
+        else
+            throw BDOSError(BDOS_WRITE_ERROR);
+    }
 }
 
-uint8_t TF20DriveDirectory::file_read(void *_fcb, uint32_t record,
+void TF20DriveDirectory::file_read(void *_fcb, uint32_t record,
                   uint8_t &cur_extent, uint8_t &cur_record, void *buffer) {
     DirFCB *fcb = reinterpret_cast<DirFCB *>(_fcb);
-    cur_extent = (record >> 7);
+    cur_extent = (record >> 7) & 0x1f;
     cur_record = record & 0x7f;
-    return fcb->read(record, (uint8_t*)buffer);
+    uint8_t res = fcb->read(record, (uint8_t*)buffer);
+    if(res != BDOS_OK)
+        throw BDOSError(res);
 }
 
-uint8_t TF20DriveDirectory::file_write(void *_fcb, void const *buffer, uint32_t record,
+void TF20DriveDirectory::file_write(void *_fcb, void const *buffer, uint32_t record,
                    uint8_t &cur_extent, uint8_t &cur_record) {
     DirFCB *fcb = reinterpret_cast<DirFCB *>(_fcb);
-    cur_extent = (record >> 7);
+    cur_extent = (record >> 7) & 0x1f;
     cur_record = record & 0x7f;
-    return fcb->write(record, (uint8_t const *)buffer);
+    uint8_t res = fcb->write(record, (uint8_t const *)buffer);
+    if(res != BDOS_OK)
+        throw BDOSError(res);
 }
 
-uint8_t TF20DriveDirectory::file_size(void *_fcb, uint8_t &extent,
+void TF20DriveDirectory::file_size(void *_fcb, uint8_t &extent,
                   uint8_t &record, uint32_t &records) {
     DirFCB *fcb = reinterpret_cast<DirFCB *>(_fcb);
     uint64_t sz = fcb->size();
@@ -356,60 +348,55 @@ uint8_t TF20DriveDirectory::file_size(void *_fcb, uint8_t &extent,
         extent = (records >> 7) & 0x1f;
         record = records & 0x7f;
     }
-    return 0;
 }
 
-uint8_t TF20DriveDirectory::file_tell(void *_fcb, uint32_t &records) {
+void TF20DriveDirectory::file_tell(void *_fcb, uint32_t &records) {
     DirFCB *fcb = reinterpret_cast<DirFCB *>(_fcb);
     uint64_t pos = fcb->tell();
     records = (pos+127)/128;
-    return 0;
 }
 
-uint8_t TF20DriveDirectory::disk_write(uint8_t track, uint8_t sector, void const *buffer) {
+void TF20DriveDirectory::disk_write(uint8_t track, uint8_t sector, void const *buffer) {
     if(track >= 4 || sector >= 64)
-        return BDOS_WRITE_ERROR;
+        throw BDOSError(BDOS_WRITE_ERROR);
     //.boot is not a valid name for any file, they must have \.?[^.]{0,8}\.[^.]{0,3}
     std::fstream st((base_dir + "/.boot").c_str(), std::ios::out);
     if(!st.good()) {
-        return BDOS_WRITE_ERROR;
+        throw BDOSError(BDOS_WRITE_ERROR);
     }
     st.seekp(track * 8192 + sector * 128);
     if(!st.good()) {
-        return BDOS_WRITE_ERROR;
+        throw BDOSError(BDOS_WRITE_ERROR);
     }
     st.write((char const*)buffer, 128);
     if(!st.good()) {
-        return BDOS_WRITE_ERROR;
+        throw BDOSError(BDOS_WRITE_ERROR);
     }
-    return 0;
 }
 
-uint8_t TF20DriveDirectory::disk_format(uint8_t track) {
-    return BDOS_WRITE_ERROR;
+void TF20DriveDirectory::disk_format(uint8_t track) {
+    throw BDOSError(BDOS_WRITE_ERROR);
 }
 
-uint8_t TF20DriveDirectory::disk_size(uint8_t &clusters) {
+void TF20DriveDirectory::disk_size(uint8_t &clusters) {
     clusters = 255;
-    return 0;
 }
 
-uint8_t TF20DriveDirectory::disk_read(uint8_t track, uint8_t sector, void *buffer)  {
+void TF20DriveDirectory::disk_read(uint8_t track, uint8_t sector, void *buffer)  {
     if(track >= 4 || sector >= 64)
-        return BDOS_READ_ERROR;
+        throw BDOSError(BDOS_READ_ERROR);
     //.boot is not a valid name for any file, they must have \.?[^.]{0,8}\.[^.]{0,3}
     std::fstream st((base_dir + "/.boot").c_str(), std::ios::in);
     if(!st.good()) {
-        return BDOS_READ_ERROR;
+        throw BDOSError(BDOS_READ_ERROR);
     }
     st.seekg(track * 8192 + sector * 128);
     if(!st.good()) {
-        return BDOS_READ_ERROR;
+        throw BDOSError(BDOS_READ_ERROR);
     }
     st.read((char*)buffer, 128);
     if(!st.good()) {
-        return BDOS_READ_ERROR;
+        throw BDOSError(BDOS_READ_ERROR);
     }
-    return 0;
 }
 

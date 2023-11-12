@@ -30,8 +30,8 @@ static bool dirent_compare_ignore_position(uint8_t const *n1, uint8_t const *n2)
     return true;
 }
 
-static bool dirent_compare(uint8_t const *ent, uint8_t p_us,
-                           uint8_t const *pattern, uint8_t p_ext) {
+static bool dirent_compare_ignore_position(uint8_t const *ent, uint8_t p_us,
+        uint8_t const *pattern, uint8_t p_ext) {
     if(p_us != '?' && ent[0] != p_us) {
         printf("\n");
         return false;
@@ -43,7 +43,7 @@ static bool dirent_compare(uint8_t const *ent, uint8_t p_us,
             return false;
         }
     }
-    if(p_ext != '?' && (ent[12] & 0xfe) != (p_ext & 0xfe)) {
+    if(p_ext != '?' && (ent[12] & 0xe0) != (p_ext & 0xe0)) {
         printf("\n");
         return false;
     }
@@ -153,6 +153,34 @@ static int find_free_dirent(DiskDriveInterface *drive, uint8_t *dir_ent) {
     return -1;
 }
 
+static CHS chsFromBlockAndRecord(int block, uint32_t record) {
+    return CHS(4+(block >> 2),(block>>1)&1, ((block & 1) << 3 | ((record >> 1) & 7))+1);
+}
+
+static size_t sectorOffsetFromRecord(uint32_t record) {
+    return (record & 1) * 128;
+}
+
+static int extentGroupFromRecord(uint32_t record) {
+    return record / 256;
+}
+
+static int extentHighFromRecord(uint32_t record) {
+    return record / 4096;
+}
+
+static int blockIndexInFileFromRecord(uint32_t record) {
+    return record/16;
+}
+
+static int blockIndexInExtentGroupFromRecord(uint32_t record) {
+    return blockIndexInFileFromRecord(record) & 0xf;
+}
+
+static int blockCountInFileFromRecordCount(uint32_t recordCount) {
+    return (recordCount+15)/16;
+}
+
 class ImgSearch {
 private:
     DiskDriveInterface *drive;
@@ -197,12 +225,12 @@ private:
 public:
     ImgFCB(DiskDriveInterface *drive, uint8_t us, uint8_t const *filename,
            uint8_t extent, bool create);
-    bool good();
     uint64_t size();
     uint64_t tell();
-    uint8_t write(uint32_t record,uint8_t const *buf);
-    uint8_t read(uint32_t record,uint8_t *buf);
-    void close();
+    uint8_t write(uint32_t record, uint8_t &cur_extent, uint8_t &cur_record,
+                  uint8_t const *buf);
+    uint8_t read(uint32_t record, uint8_t &cur_extent, uint8_t &cur_record,
+                 uint8_t *buf);
 };
 
 ImgFCB::ImgFCB(DiskDriveInterface *drive, uint8_t us, uint8_t const *filename,
@@ -213,12 +241,12 @@ ImgFCB::ImgFCB(DiskDriveInterface *drive, uint8_t us, uint8_t const *filename,
         uint8_t dir_ent[32];
         if(!read_dir_extent(drive, i, dir_ent)) {
             printf("Cannot read extent %d\n", i);
-            return;
+            throw BDOSError(BDOS_READ_ERROR);
         }
         if(dir_ent[0] != 0)
             continue;
         printf("filename %s\n", hx20ToUnixFilename(dir_ent+1).c_str());
-        if(dirent_compare(dir_ent, us, filename, extent)) {
+        if(dirent_compare_ignore_position(dir_ent, us, filename, extent)) {
             printf("Found file in extent %d\n", i);
             //found one.
             if((dir_ent[0xc] & 0x1e) == 0 && dir_ent[0xe] == 0) {
@@ -235,7 +263,7 @@ ImgFCB::ImgFCB(DiskDriveInterface *drive, uint8_t us, uint8_t const *filename,
         if(last_ent != -1) {
             last_ent = -1;
             printf("Create: file exists\n");
-            return;
+            throw BDOSError(BDOS_WRITE_ERROR);
         }
         uint8_t dir_ent[32];
         last_ent = find_free_dirent(drive, dir_ent);
@@ -246,16 +274,15 @@ ImgFCB::ImgFCB(DiskDriveInterface *drive, uint8_t us, uint8_t const *filename,
             memcpy(dir_ent+1, filename, 11);
             dir_ent[12] = extent & 0xf0;//the actual extent group number and extent number is 0.
             memcpy(this->dirent, dir_ent, 15);
-            if(!write_dir_extent(drive, last_ent, dir_ent))
-                return;
+            if(!write_dir_extent(drive, last_ent, dir_ent)) {
+                printf("Failed to write extent\n");
+                throw BDOSError(BDOS_WRITE_ERROR);
+            }
+        } else {
+            printf("Create: cannot find empty extent\n");
+            throw BDOSError(BDOS_WRITE_ERROR);
         }
-        printf("Create: cannot find empty extent\n");
     }
-}
-
-bool ImgFCB::good() {
-    //basically file found/created or not.
-    return last_ent != -1;
 }
 
 uint64_t ImgFCB::size() {
@@ -271,7 +298,8 @@ uint64_t ImgFCB::tell() {
     return position_records*128;
 }
 
-uint8_t ImgFCB::write(uint32_t record,uint8_t const *buf) {
+uint8_t ImgFCB::write(uint32_t record, uint8_t &cur_extent, uint8_t &cur_record,
+                      uint8_t const *buf) {
     //first, check if the file is already large enough
     uint8_t dir_ent[32];
     if(!read_dir_extent(drive, last_ent, dir_ent)) {
@@ -279,22 +307,30 @@ uint8_t ImgFCB::write(uint32_t record,uint8_t const *buf) {
         return BDOS_READ_ERROR;
     }
     unsigned int records_in_file = get_records_in_file(dir_ent);
-    int ent;
+    int ent = last_ent;
     printf("Found %d records in file\n", records_in_file);
     if(records_in_file <= record) {
         //no, it is not.
         //check if we need to add more blocks
-        if((records_in_file+15)/16 < (record+1+15)/16) {
+        if(blockCountInFileFromRecordCount(records_in_file) <
+                blockCountInFileFromRecordCount(record+1)) {
             printf("For record %d, need to add new block\n", record);
             //yes, complete this one.
             records_in_file = (records_in_file+15) & ~0xf;
-            set_records_in_dirent(dir_ent, records_in_file % 32768);
+            set_records_in_dirent(dir_ent, records_in_file % 256);
+            printf("Set records to %d in %d (resulting in %d %d)\n", records_in_file % 256, ent,
+                   (int)dir_ent[12], (int)dir_ent[15]);
 
             //now add blocks until we have enough.
             int current_add_block = 0;
-            while(records_in_file/16 < (record+1+15)/16) {
-                //if this ent is already full, get a new one.
-                if(records_in_file % 256 == 0 && records_in_file != 0) {
+            while(blockCountInFileFromRecordCount(records_in_file) <
+                    blockCountInFileFromRecordCount(record+1)) {
+                //if this extent group is already full, get a new one.
+                if((records_in_file % 256) == 0 &&
+                        records_in_file != 0) {
+                    set_records_in_dirent(dir_ent, 256);
+                    printf("Set records to %d in %d (resulting in %d %d)\n", 256, ent,
+                           (int)dir_ent[12], (int)dir_ent[15]);
                     uint8_t last_extent_bits = dir_ent[12] & 0xfe;
                     if(!write_dir_extent(drive, last_ent, dir_ent)) {
                         printf("Could not write current dirent\n");
@@ -305,35 +341,47 @@ uint8_t ImgFCB::write(uint32_t record,uint8_t const *buf) {
                         printf("Could not find new free dirent\n");
                         return BDOS_WRITE_ERROR;
                     }
+                    printf("Added new dirent %d\n", res);
                     last_ent = res;
                     memset(dir_ent, 0, 32);
                     memcpy(dir_ent, this->dirent, 15);
                     dir_ent[12] = last_extent_bits+2;
                 }
                 int res = find_free_block_after(drive, current_add_block);
-                current_add_block = res;
                 if(res == 0) {
                     printf("Could not find new free block after %d\n", current_add_block);
                     return BDOS_READ_ERROR;
                 }
-                dir_ent[16+(records_in_file % 256) / 16] = res;
+                current_add_block = res;
+                printf("Added new block %d at %d in %d\n", res, blockIndexInExtentGroupFromRecord(records_in_file), ent);
+                dir_ent[16+blockIndexInExtentGroupFromRecord(records_in_file)] = res;
                 records_in_file += 16;
             }
         }
-        if((records_in_file+15)/16 >= (record+1+15)/16) {
+        if(blockCountInFileFromRecordCount(records_in_file) >=
+                blockCountInFileFromRecordCount(record+1)) {
             //ok, that is all blocks that are needed. fix the record count.
             records_in_file = record+1;
-            set_records_in_dirent(dir_ent, records_in_file % 32768);
+            if(records_in_file % 256 == 0) {
+                //no need to add a new extent, yet. just fill this one.
+                set_records_in_dirent(dir_ent, 256);
+                printf("Set records to %d in %d (resulting in %d %d)\n", 256, ent,
+                       (int)dir_ent[12], (int)dir_ent[15]);
+            } else {
+                set_records_in_dirent(dir_ent, records_in_file % 256);
+                printf("Set records to %d in %d (resulting in %d %d)\n", records_in_file % 256, ent,
+                       (int)dir_ent[12], (int)dir_ent[15]);
+            }
         }
         if(!write_dir_extent(drive, last_ent, dir_ent)) {
             printf("Could not write updated dir ent\n");
             return BDOS_WRITE_ERROR;
         }
         ent = last_ent;
-    } else if (records_in_file / 256 != record / 256) {
+    } else if (extentGroupFromRecord(records_in_file) != extentGroupFromRecord(record)) {
         //find the correct extent
-        this->dirent[12] = (this->dirent[12] & 0xe0) | ((record / 256) << 1);
-        this->dirent[14] = (this->dirent[14] & 0xf0) | ((record / 4096));
+        this->dirent[12] = (this->dirent[12] & 0xe0) | ((extentGroupFromRecord(record) << 1) & 0x1e);
+        this->dirent[14] = (this->dirent[14] & 0xf0) | (extentHighFromRecord(record) & 0x0f);
         for(ent = 0; ent < 64; ent++) {
             if(!read_dir_extent(drive, ent, dir_ent)) {
                 printf("Could not read dir ent\n");
@@ -346,41 +394,44 @@ uint8_t ImgFCB::write(uint32_t record,uint8_t const *buf) {
             printf("Could not find dir ent\n");
             return BDOS_READ_ERROR;
         }
-    } else {
-        ent = last_ent;
+        printf("Found correct dirent\n");
     }
 
-    if(dir_ent[16+(record % 256)/16] == 0) {
+    if(dir_ent[16+blockIndexInExtentGroupFromRecord(record)] == 0) {
         int res = find_free_block_after(drive, 0);
         if(res == -1) {
             printf("Could not find free block\n");
             return BDOS_READ_ERROR;
         }
-        dir_ent[16+(record % 256)/16] = res;
+        dir_ent[16+blockIndexInExtentGroupFromRecord(record)] = res;
         if(!write_dir_extent(drive, ent, dir_ent)) {
             printf("Could not write dir ent\n");
             return BDOS_WRITE_ERROR;
         }
     }
-    int block = dir_ent[16+(record % 256)/16];
+    int block = dir_ent[16+blockIndexInExtentGroupFromRecord(record)];
     //now get the sector for this
     uint8_t sector_data[256];
-    CHS chs(4+(block >> 2),(block>>1)&1, ((block & 1) << 3 | ((record >> 1) & 7))+1);
+    CHS chs = chsFromBlockAndRecord(block, record);
+
     if(!drive->read(chs, sector_data, 1)) {
         printf("Could not read sector %d,%d,%d\n",chs.idCylinder,chs.idSide,chs.idSector);
         return BDOS_READ_ERROR;
     }
-    memcpy(sector_data + 128*(record & 1), buf, 128);
+    memcpy(sector_data + sectorOffsetFromRecord(record), buf, 128);
     if(!drive->write(chs, sector_data, 1)) {
         printf("Could not write updated sector %d,%d,%d\n",chs.idCylinder,chs.idSide,chs.idSector);
         return BDOS_WRITE_ERROR;
     }
     position_records = record+1;
 
+    cur_extent = dirent[12];
+    cur_record = record & 0x7f;
     return 0;
 }
 
-uint8_t ImgFCB::read(uint32_t record,uint8_t *buf) {
+uint8_t ImgFCB::read(uint32_t record, uint8_t &cur_extent, uint8_t &cur_record,
+                     uint8_t *buf) {
     //first, check if the file is already large enough
     uint8_t dir_ent[32];
     if(!read_dir_extent(drive, last_ent, dir_ent)) {
@@ -393,10 +444,10 @@ uint8_t ImgFCB::read(uint32_t record,uint8_t *buf) {
     if(records_in_file <= record) {
         printf("read: requested record %d, but only %d in file\n", record, records_in_file);
         return BDOS_READ_ERROR;
-    } else if (records_in_file / 256 != record / 256) {
+    } else if (extentGroupFromRecord(records_in_file) != extentGroupFromRecord(record)) {
         //find the correct extent
-        this->dirent[12] = (this->dirent[12] & 0xe0) | ((record / 256) << 1);
-        this->dirent[14] = (this->dirent[14] & 0xf0) | ((record / 4096));
+        this->dirent[12] = (this->dirent[12] & 0xe0) | ((extentGroupFromRecord(record) << 1) & 0x1e);
+        this->dirent[14] = (this->dirent[14] & 0xf0) | (extentHighFromRecord(record) & 0x0f);
         for(ent = 0; ent < 64; ent++) {
             if(!read_dir_extent(drive, ent, dir_ent)) {
                 printf("Could not read dir ent\n");
@@ -412,28 +463,30 @@ uint8_t ImgFCB::read(uint32_t record,uint8_t *buf) {
         printf("read: found extent %d\n", ent);
     }
 
-    if(dir_ent[16+(record % 256)/16] == 0) {
-        printf("read: block %d is not active\n", 16+(record % 256)/16);
+    if(dir_ent[16+blockIndexInExtentGroupFromRecord(record)] == 0) {
+        printf("read: block %d is not active\n",
+               blockIndexInExtentGroupFromRecord(record));
         return BDOS_READ_ERROR;
     }
-    int block = dir_ent[16+(record % 256)/16];
+    int block = dir_ent[16+blockIndexInExtentGroupFromRecord(record)];
     printf("Reading record %d in block %d: %d\n",
-           record, 16+(record % 256)/16, block);
+           record, blockIndexInExtentGroupFromRecord(record), block);
     //now get the sector for this
     uint8_t sector_data[256];
-    CHS chs(4+(block >> 2),(block>>1)&1, ((block & 1) << 3 | ((record >> 1) & 7))+1);
+
+    CHS chs = chsFromBlockAndRecord(block, record);
+
     if(!drive->read(chs, sector_data, 1)) {
         printf("read: failed to read disk %d %d %d\n", chs.idCylinder, chs.idSide, chs.idSector);
         return BDOS_READ_ERROR;
     }
-    memcpy(buf, sector_data + 128*(record & 1), 128);
+    memcpy(buf, sector_data + sectorOffsetFromRecord(record), 128);
 
     position_records = record+1;
 
+    cur_extent = dirent[12];
+    cur_record = record & 0x7f;
     return 0;
-}
-
-void ImgFCB::close() {
 }
 
 TF20DriveDiskImage::TF20DriveDiskImage(std::string const &file) {
@@ -457,37 +510,33 @@ void TF20DriveDiskImage::reset() {
 }
 
 void *TF20DriveDiskImage::file_open(uint8_t us, uint8_t const *filename, uint8_t extent) {
-    ImgFCB *fcb = new ImgFCB(drive.get(), us, filename, extent, false);
-    if(!fcb->good()) {
-        delete fcb;
-        return nullptr;
-    }
-    return fcb;
+    return new ImgFCB(drive.get(), us, filename, extent, false);
 }
 
 void TF20DriveDiskImage::file_close(void *_fcb) {
     ImgFCB *fcb = reinterpret_cast<ImgFCB *>(_fcb);
-    fcb->close();
     delete fcb;
 }
 
-uint8_t TF20DriveDiskImage::file_find_first(uint8_t us, uint8_t const *pattern, uint8_t extent, void *dir_entry, std::string &filename) {
+void TF20DriveDiskImage::file_find_first(uint8_t us, uint8_t const *pattern, uint8_t extent, void *dir_entry, std::string &filename) {
     dirSearch = std::make_unique<ImgSearch>(drive.get(), us, pattern, extent);
 
     uint8_t *obuf = (uint8_t*)dir_entry;
     uint8_t res = dirSearch->findNext(obuf);
     filename = hx20ToUnixFilename(obuf+1);
-    return res;
+    if(res != BDOS_OK)
+        throw BDOSError(res);
 }
 
-uint8_t TF20DriveDiskImage::file_find_next(void *dir_entry, std::string &filename) {
+void TF20DriveDiskImage::file_find_next(void *dir_entry, std::string &filename) {
     uint8_t *obuf = (uint8_t *)dir_entry;
     uint8_t res = dirSearch->findNext(obuf);
     filename = hx20ToUnixFilename(obuf+1);
-    return res;
+    if(res != BDOS_OK)
+        throw BDOSError(res);
 }
 
-uint8_t TF20DriveDiskImage::file_remove(uint8_t us, uint8_t const *filename, uint8_t extent) {
+void TF20DriveDiskImage::file_remove(uint8_t us, uint8_t const *filename, uint8_t extent) {
     uint8_t dir_ent[32];
     uint8_t pattern[15] = {0};
     pattern[0] = us;
@@ -495,17 +544,16 @@ uint8_t TF20DriveDiskImage::file_remove(uint8_t us, uint8_t const *filename, uin
     pattern[12] = extent;
     for(int i = 0; i < 64; i++) {
         if(!read_dir_extent(drive.get(), i, dir_ent))
-            return BDOS_READ_ERROR;
+            throw BDOSError(BDOS_READ_ERROR);
         if(dir_ent[0] != 0)
             continue;
         if(dirent_compare_ignore_position(dir_ent, pattern)) {
             printf("Deleting file in entry %d\n", i);
             dir_ent[0] = 0xe5;
             if(!write_dir_extent(drive.get(), i, dir_ent))
-                return BDOS_WRITE_ERROR;
+                throw BDOSError(BDOS_WRITE_ERROR);
         }
     }
-    return 0;
 }
 
 void *TF20DriveDiskImage::file_create(uint8_t us, uint8_t const *filename, uint8_t extent) {
@@ -513,7 +561,7 @@ void *TF20DriveDiskImage::file_create(uint8_t us, uint8_t const *filename, uint8
     return fcb;
 }
 
-uint8_t TF20DriveDiskImage::file_rename(uint8_t old_us, uint8_t const *old_filename, uint8_t old_extent,
+void TF20DriveDiskImage::file_rename(uint8_t old_us, uint8_t const *old_filename, uint8_t old_extent,
                  uint8_t new_us, uint8_t const *new_filename, uint8_t new_extent) {
     uint8_t dir_ent[32];
     uint8_t pattern[15] = {0};
@@ -522,7 +570,7 @@ uint8_t TF20DriveDiskImage::file_rename(uint8_t old_us, uint8_t const *old_filen
     pattern[12] = old_extent;
     for(int i = 0; i < 64; i++) {
         if(!read_dir_extent(drive.get(), i, dir_ent))
-            return BDOS_READ_ERROR;
+            throw BDOSError(BDOS_READ_ERROR);
         if(dir_ent[0] != 0)
             continue;
         if(dirent_compare_ignore_position(dir_ent, pattern)) {
@@ -530,30 +578,29 @@ uint8_t TF20DriveDiskImage::file_rename(uint8_t old_us, uint8_t const *old_filen
             memcpy(dir_ent+1, new_filename, 11);
             dir_ent[12] = (dir_ent[12] & 0x1f) | (new_extent & 0xe0);
             if(!write_dir_extent(drive.get(), i, dir_ent))
-                return BDOS_WRITE_ERROR;
+                throw BDOSError(BDOS_WRITE_ERROR);
         }
     }
-    return 0;
 }
 
-uint8_t TF20DriveDiskImage::file_read(void *_fcb, uint32_t record,
+void TF20DriveDiskImage::file_read(void *_fcb, uint32_t record,
                   uint8_t &cur_extent, uint8_t &cur_record, void *buffer) {
     ImgFCB *fcb = reinterpret_cast<ImgFCB *>(_fcb);
-    cur_extent = (record >> 7);
-    cur_record = record & 0x7f;
-    return fcb->read(record, (uint8_t*)buffer);
+    uint8_t res = fcb->read(record, cur_extent, cur_record, (uint8_t*)buffer);
+    if(res != BDOS_OK)
+        throw BDOSError(res);
 }
 
-uint8_t TF20DriveDiskImage::file_write(void *_fcb, void const *buffer, uint32_t record,
+void TF20DriveDiskImage::file_write(void *_fcb, void const *buffer, uint32_t record,
                    uint8_t &cur_extent, uint8_t &cur_record) {
     ImgFCB *fcb = reinterpret_cast<ImgFCB *>(_fcb);
-    cur_extent = (record >> 7);
-    cur_record = record & 0x7f;
-    return fcb->write(record, (uint8_t const *)buffer);
+    uint8_t res = fcb->write(record, cur_extent, cur_record, (uint8_t const *)buffer);
+    if(res != BDOS_OK)
+        throw BDOSError(res);
 }
 
-uint8_t TF20DriveDiskImage::file_size(void *_fcb, uint8_t &extent,
-                  uint8_t &record, uint32_t &records) {
+void TF20DriveDiskImage::file_size(void *_fcb, uint8_t &extent,
+                                   uint8_t &record, uint32_t &records) {
     ImgFCB *fcb = reinterpret_cast<ImgFCB *>(_fcb);
     uint64_t sz = fcb->size();
     records = (sz+127)/128;
@@ -564,56 +611,50 @@ uint8_t TF20DriveDiskImage::file_size(void *_fcb, uint8_t &extent,
         extent = (records >> 7) & 0x1f;
         record = records & 0x7f;
     }
-    return 0;
 }
 
-uint8_t TF20DriveDiskImage::file_tell(void *_fcb, uint32_t &records) {
+void TF20DriveDiskImage::file_tell(void *_fcb, uint32_t &records) {
     ImgFCB *fcb = reinterpret_cast<ImgFCB *>(_fcb);
     uint64_t sz = fcb->tell();
     records = (sz+127)/128;
-    return 0;
 }
 
-uint8_t TF20DriveDiskImage::disk_write(uint8_t track, uint8_t sector, void const *buffer) {
+void TF20DriveDiskImage::disk_write(uint8_t track, uint8_t sector, void const *buffer) {
     uint8_t buf[256];
     if(!drive->read(CHS(track, sector >> 5, ((sector & 0x1e) >> 1)+1), buf, 1))
-        return BDOS_READ_ERROR;
+        throw BDOSError(BDOS_READ_ERROR);
     memcpy(buf+128*(sector & 1), buffer, 128);
     if(!drive->write(CHS(track, sector >> 5, ((sector & 0x1e) >> 1)+1), buf, 1))
-        return BDOS_WRITE_ERROR;
-    return 0;
+        throw BDOSError(BDOS_WRITE_ERROR);
 }
 
-uint8_t TF20DriveDiskImage::disk_format(uint8_t track) {
+void TF20DriveDiskImage::disk_format(uint8_t track) {
     if(!drive->format(track, 0, 16, 1))
-        return BDOS_WRITE_ERROR;
+        throw BDOSError(BDOS_WRITE_ERROR);
     if(!drive->format(track, 1, 16, 1))
-        return BDOS_WRITE_ERROR;
-    return 0;
+        throw BDOSError(BDOS_WRITE_ERROR);
 }
 
-uint8_t TF20DriveDiskImage::disk_size(uint8_t &clusters) {
+void TF20DriveDiskImage::disk_size(uint8_t &clusters) {
     CHS chs;
     if(!drive->size(chs))
-        return BDOS_READ_ERROR;
+        throw BDOSError(BDOS_READ_ERROR);
     clusters = (chs.idCylinder-4)*(chs.idSide)*(chs.idSector) / 4 - 1;
     uint8_t dir_ent[32];
     for(int i = 0; i < 64; i++) {
         if(!read_dir_extent(drive.get(), i, dir_ent))
-            return BDOS_READ_ERROR;
+            throw BDOSError(BDOS_READ_ERROR);
         if(dir_ent[0] != 0)
             continue;
         clusters -=((dir_ent[15] + (dir_ent[12] & 0x1)*128)+15)/16;
     }
-    return 0;
 }
 
-uint8_t TF20DriveDiskImage::disk_read(uint8_t track, uint8_t sector, void *buffer)  {
+void TF20DriveDiskImage::disk_read(uint8_t track, uint8_t sector, void *buffer)  {
     uint8_t buf[256];
     if(!drive->read(CHS(track, sector >> 5, ((sector & 0x1e) >> 1)+1), buf, 1))
-        return BDOS_READ_ERROR;
+        throw BDOSError(BDOS_READ_ERROR);
     memcpy(buffer, buf+128*(sector & 1), 128);
-    return 0;
 }
 
 
