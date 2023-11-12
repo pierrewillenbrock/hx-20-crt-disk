@@ -2282,10 +2282,16 @@ QVariant PacketListModel::data(const QModelIndex &index, int role) const {
                 if(index.row() < 0 || (unsigned)index.row() >= packets.size())
                     return QVariant();
                 auto &pi = packets[index.row()];
+                return pi.time.toString("hh:mm:ss.zzz");
+            }
+        } else if(index.column() == 1) {
+            if(!index.parent().isValid()) {
+                if(index.row() < 0 || (unsigned)index.row() >= packets.size())
+                    return QVariant();
+                auto &pi = packets[index.row()];
                 return pi.title;
             }
-        }
-        if(index.column() == 1) {
+        } else if(index.column() == 2) {
             if(!index.parent().isValid()) {
                 if(index.row() < 0 || (unsigned)index.row() >= packets.size())
                     return QVariant();
@@ -2295,7 +2301,7 @@ QVariant PacketListModel::data(const QModelIndex &index, int role) const {
         }
         return QString();
     case Qt::ItemDataRole::TextAlignmentRole:
-        if(index.column() == 0) {
+        if(index.column() == 1) {
             if(!index.parent().isValid()) {
                 if(index.row() < 0 || (unsigned)index.row() >= packets.size())
                     return QVariant();
@@ -2317,8 +2323,10 @@ QVariant PacketListModel::headerData(int section, Qt::Orientation orientation, i
     case Qt::ItemDataRole::DisplayRole:
         switch(section) {
         case 0:
-            return QString("Packet");
+            return QString("Time");
         case 1:
+            return QString("Packet");
+        case 2:
             return QString("Info");
         }
     default:
@@ -2343,7 +2351,7 @@ int PacketListModel::rowCount(const QModelIndex &parent) const {
 }
 
 int PacketListModel::columnCount(const QModelIndex &parent) const {
-    return 2;
+    return 3;
 }
 
 PacketDecodeModel::PacketDecodeModel(std::deque<RawDecodePacketInfo> &packets) : packets(packets), pktidx(-1) {
@@ -2565,6 +2573,8 @@ CommsDebugWindow::CommsDebugWindow(QWidget *parent, Qt::WindowFlags f)
     packetdecode->setFont(textfont);
     rawdecode->setFont(textfont);
 
+    packetlist->setIndentation(0);
+
     setWidget(w);
     setWindowTitle(tr("Communications log"));
 
@@ -2574,7 +2584,9 @@ CommsDebugWindow::CommsDebugWindow(QWidget *parent, Qt::WindowFlags f)
     packetlist->setItemsExpandable(false);
 
     packetlist->setColumnWidth
-    (0, packetlist->fontMetrics().averageCharWidth() * 50);
+    (0, packetlist->fontMetrics().averageCharWidth() * 14);
+    packetlist->setColumnWidth
+    (1, packetlist->fontMetrics().averageCharWidth() * 50);
 
     connect(packetlistmodel, &QAbstractItemModel::rowsInserted,
             this, [this]
@@ -2703,6 +2715,7 @@ void CommsDebugWindow::setConnection(HX20SerialConnection *conn) {
 void CommsDebugWindow::monitorInput(InputPacketState state,
                                     std::vector<uint8_t> const &bytes) {
     RawDecodePacketInfo pi;
+    pi.time = QDateTime::currentDateTime();
     pi.dir = RawDecodePacketInfo::MasterToSlave;
     pi.raw = bytes;
 
@@ -2721,6 +2734,7 @@ void CommsDebugWindow::monitorInput(InputPacketState state,
 void CommsDebugWindow::monitorOutput(OutputPacketState state,
                                      std::vector<uint8_t> const &bytes) {
     RawDecodePacketInfo pi;
+    pi.time = QDateTime::currentDateTime();
     pi.dir = RawDecodePacketInfo::SlaveToMaster;
     pi.raw = bytes;
 

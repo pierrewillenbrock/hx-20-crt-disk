@@ -5,6 +5,7 @@
 #include "hx20-ser-proto.hpp"
 #include <deque>
 #include <QAbstractItemModel>
+#include <QDateTime>
 
 QT_BEGIN_NAMESPACE
 
@@ -80,6 +81,7 @@ struct RawDecodePacketInfo {
     Direction dir;
     std::vector<uint8_t> raw;
     std::vector<DecodeResult> decoded;
+    QDateTime time;
     QString title;
     QString info;
 };
