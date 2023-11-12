@@ -22,6 +22,8 @@ class QMenu;
 
 QT_END_NAMESPACE
 
+enum class TF20DriveDiskImageFileType;
+
 class HX20DiskDevice : public QObject, public HX20SerialDevice {
     Q_OBJECT;
 private:
@@ -74,7 +76,10 @@ public:
     HX20DiskDevice(int ddno = 0);
     ~HX20DiskDevice();
     void setDiskDirectory(int drive_code, std::string const &dir);
+    void setDiskUrl(int drive_code, QString const &url);
     void setDiskFile(int drive_code, std::string const &file);
+    void setDiskFile(int drive_code, std::string const &file,
+                     TF20DriveDiskImageFileType filetype);
     void ejectDisk(int drive_code);
     void addDocksToMainWindow(QMainWindow *window, QMenu *devices_menu);
     void setSettings(Settings::Group *settingsConfig,

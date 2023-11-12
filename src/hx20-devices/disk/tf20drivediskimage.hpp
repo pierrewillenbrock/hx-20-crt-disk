@@ -3,12 +3,19 @@
 
 #include "tf20-adapters.hpp"
 
+enum class TF20DriveDiskImageFileType {
+    TeleDisk,
+    Raw,
+    Autodetect
+};
+
 class TF20DriveDiskImage : public TF20DriveInterface {
 private:
     std::unique_ptr<ImgSearch> dirSearch;
     std::unique_ptr<DiskDriveInterface> drive;
 public:
-    TF20DriveDiskImage(std::string const &file);
+    TF20DriveDiskImage(std::string const &file, TF20DriveDiskImageFileType ft =
+                       TF20DriveDiskImageFileType::Autodetect);
     virtual ~TF20DriveDiskImage() override;
     //0x0e
     virtual void reset() override;

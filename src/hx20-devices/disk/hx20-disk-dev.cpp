@@ -1356,9 +1356,26 @@ void HX20DiskDevice::setDiskDirectory(int drive_code, std::string const &dir) {
 }
 
 void HX20DiskDevice::setDiskFile(int drive_code, std::string const &file) {
-    installNewDrive(drive_code, std::make_unique<TF20DriveDiskImage>(file),
+    setDiskFile(drive_code, file, TF20DriveDiskImageFileType::Autodetect);
+}
+
+void HX20DiskDevice::setDiskFile(int drive_code, std::string const &file,
+                                 TF20DriveDiskImageFileType filetype) {
+    installNewDrive(drive_code,
+                    std::make_unique<TF20DriveDiskImage>(file, filetype),
                     tr("Image %1").arg(QString::fromStdString(file)));
-    QString tgtval = QString("file://%1").arg(QString::fromStdString(file));
+    QString tgtval = QString("file://%2").arg(QString::fromStdString(file));
+    QString proto;
+    switch(filetype) {
+    case TF20DriveDiskImageFileType::Raw:
+        tgtval = "raw" + tgtval;
+        break;
+    case TF20DriveDiskImageFileType::TeleDisk:
+        tgtval = "teledisk" + tgtval;
+        break;
+    default:
+        break;
+    }
     if(settingsConfig->value(QString("disk_%1").arg(drive_code)) != tgtval) {
         settingsConfig->setValue
         (QString("disk_%1").arg(drive_code), tgtval);
@@ -1408,15 +1425,24 @@ void HX20DiskDevice::addDocksToMainWindow(QMainWindow *window,
         });
         mnu->addAction(tr("Set disk &file..."),
         [this,i]() {
+            QString selectedFilter;
             QString result = QFileDialog::getSaveFileName(nullptr,
                              tr("Set disk file"),
                              QString(),
-                             tr("Teledisk (*.td0)"),
-                             nullptr,
+                             tr("Teledisk (*.td0);;Raw image (*.img);;All files (*.*)"),
+                             &selectedFilter,
                              QFileDialog::DontConfirmOverwrite);
             if(!result.isEmpty()) {
+                TF20DriveDiskImageFileType ft = TF20DriveDiskImageFileType::Autodetect;
+                if(selectedFilter == "Teledisk (*.td0)") {
+                    ft = TF20DriveDiskImageFileType::TeleDisk;
+                } else if(selectedFilter == "Raw image (*.img)") {
+                    ft = TF20DriveDiskImageFileType::Raw;
+                } else if(selectedFilter == "All files (*.*)") {
+                    ft = TF20DriveDiskImageFileType::Autodetect;
+                }
                 try {
-                    this->setDiskFile(i, result.toStdString());
+                    this->setDiskFile(i, result.toStdString(), ft);
                 } catch(std::exception &e) {
                     QMessageBox::critical(nullptr,
                                           tr("Failed to open"),
@@ -1472,6 +1498,23 @@ void HX20DiskDevice::setSettings(Settings::Group *settingsConfig,
     updateFromConfig();
 }
 
+void HX20DiskDevice::setDiskUrl(int drive_code, QString const &url) {
+    if(url.startsWith("empty://")) {
+        ejectDisk(drive_code);
+    } else if(url.startsWith("dir://")) {
+        setDiskDirectory(drive_code, url.mid(6).toStdString());
+    } else if(url.startsWith("file://")) {
+        setDiskFile(drive_code, url.mid(7).toStdString(),
+                    TF20DriveDiskImageFileType::Autodetect);
+    } else if(url.startsWith("rawfile://")) {
+        setDiskFile(drive_code, url.mid(10).toStdString(),
+                    TF20DriveDiskImageFileType::Raw);
+    } else if(url.startsWith("telediskfile://")) {
+        setDiskFile(drive_code, url.mid(15).toStdString(),
+                    TF20DriveDiskImageFileType::TeleDisk);
+    }
+}
+
 void HX20DiskDevice::updateFromConfig() {
     if(!settingsConfig)
         return;
@@ -1479,12 +1522,6 @@ void HX20DiskDevice::updateFromConfig() {
         QString d1 = settingsConfig->value
                      (QString("disk_%1").arg(drive_code),
                       "empty://",true).toString();
-        if(d1.startsWith("empty://")) {
-            ejectDisk(drive_code);
-        } else if(d1.startsWith("dir://")) {
-            setDiskDirectory(drive_code, d1.mid(6).toStdString());
-        } else if(d1.startsWith("file://")) {
-            setDiskFile(drive_code, d1.mid(7).toStdString());
-        }
+        setDiskUrl(drive_code, d1);
     }
 }

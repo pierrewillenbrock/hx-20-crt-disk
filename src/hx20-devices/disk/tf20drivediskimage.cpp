@@ -489,14 +489,38 @@ uint8_t ImgFCB::read(uint32_t record, uint8_t &cur_extent, uint8_t &cur_record,
     return 0;
 }
 
-TF20DriveDiskImage::TF20DriveDiskImage(std::string const &file) {
+TF20DriveDiskImage::TF20DriveDiskImage(std::string const &file,
+                                       TF20DriveDiskImageFileType filetype) {
     std::stringstream errors;
     errors << "Failed to open file \"" << file << "\".\n";
-    if(!drive) {
+    if(filetype == TF20DriveDiskImageFileType::Autodetect) {
+        size_t p = file.rfind(".");
+        if(p != std::string::npos && (file.substr(p+1) == "td0"
+                                      || file.substr(p+1) == "TD0")) {
+            try {
+                drive = std::make_unique<TelediskImageDrive>(file);
+            } catch(std::exception &e) {
+                errors << "TeleDisk: " << e.what();
+            }
+        }
+        if(!drive) {
+            try {
+                drive = std::make_unique<RawImageDrive>(file);
+            } catch(std::exception &e) {
+                errors << "Raw: " << e.what();
+            }
+        }
+    } else if(filetype == TF20DriveDiskImageFileType::TeleDisk) {
         try {
             drive = std::make_unique<TelediskImageDrive>(file);
         } catch(std::exception &e) {
             errors << "TeleDisk: " << e.what();
+        }
+    } else if(filetype == TF20DriveDiskImageFileType::Raw) {
+        try {
+            drive = std::make_unique<RawImageDrive>(file);
+        } catch(std::exception &e) {
+            errors << "Raw: " << e.what();
         }
     }
     if(!drive) {

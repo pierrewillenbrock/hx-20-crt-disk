@@ -127,10 +127,10 @@ MainWindow::MainWindow(QWidget *parent, Qt::WindowFlags flags) :
     currentConfiguration(-1),
     crt_dev(std::make_unique<HX20CrtDevice>()),
     disk_devs({
-        std::make_unique<HX20DiskDevice>(0),
-        std::make_unique<HX20DiskDevice>(1)}),
-    commsdbg(new CommsDebugWindow()),
-    config_action_group(new QActionGroup(this)) {
+    std::make_unique<HX20DiskDevice>(0),
+    std::make_unique<HX20DiskDevice>(1)}),
+commsdbg(new CommsDebugWindow()),
+config_action_group(new QActionGroup(this)) {
     commsdbg->setObjectName("commsdebugdock");
     currentConfiguration = settingsRoot->value("CurrentConfiguration",0).toInt();
     if(currentConfiguration >= settingsRoot->arraySize("Configuration"))
@@ -285,7 +285,9 @@ bool MainWindow::setConfigFromCommandline(QString const &config) {
 void MainWindow::setupDrive(std::unique_ptr< HX20DiskDevice > const &dev,
                             int drive_code, QString const &disk) {
     QFileInfo fi(disk);
-    if(fi.isDir()) {
+    if(disk.contains("://")) {
+        dev->setDiskUrl(drive_code, disk);
+    } else if(fi.isDir()) {
         try {
             dev->setDiskDirectory(drive_code, disk.toLocal8Bit().data());
         } catch(std::exception &e) {

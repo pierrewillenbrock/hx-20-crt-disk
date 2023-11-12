@@ -4,6 +4,7 @@
 #include "disk-drive.hpp"
 #include <string>
 #include <memory>
+#include <fstream>
 
 namespace TeleDiskParser {
 class Disk;
@@ -16,6 +17,25 @@ private:
 public:
     TelediskImageDrive(std::string const &filename);
     virtual ~TelediskImageDrive() override;
+    virtual void reset() override;
+    virtual bool write(CHS const &chs,
+                       void const *buffer, uint8_t sector_size_code) override;
+    virtual bool format(uint8_t track, uint8_t head,
+                        uint8_t num_sectors, uint8_t sector_size_code) override;
+    virtual bool size(CHS &chs) override;
+    virtual bool read(CHS const &chs, void *buffer,
+                      uint8_t sector_size_code) override;
+    virtual bool size(CHS const &chs, uint8_t &sector_size_code) override;
+};
+
+class RawImageDrive : public DiskDriveInterface {
+private:
+    std::string filename;
+    std::fstream file;
+    ssize_t file_size;
+public:
+    RawImageDrive(std::string const &filename);
+    virtual ~RawImageDrive() override;
     virtual void reset() override;
     virtual bool write(CHS const &chs,
                        void const *buffer, uint8_t sector_size_code) override;
