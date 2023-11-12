@@ -9,6 +9,7 @@
 QT_BEGIN_NAMESPACE
 
 class QTreeView;
+class QTimer;
 
 QT_END_NAMESPACE
 
@@ -90,8 +91,8 @@ private:
     std::deque<RawDecodePacketInfo> &packets;
 public:
     PacketListModel(std::deque<RawDecodePacketInfo> &packets);
-    void beforeAddPacket();
-    void afterAddPacket();
+    void beforeAddPackets();
+    void afterAddPackets();
 protected:
     virtual QVariant data(const QModelIndex &index, int role) const override;
     virtual QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
@@ -154,12 +155,14 @@ class CommsDebugWindow : public QDockWidget, public HX20SerialMonitor {
     Q_OBJECT;
 private:
     std::deque<RawDecodePacketInfo> packets;
+    std::deque<RawDecodePacketInfo> insertpackets;
     HX20SerialConnection *conn;
     bool scrollToNewest;
 
     QTreeView *packetlist;
     QTreeView *packetdecode;
     QTreeView *rawdecode;
+    QTimer *insertTimer;
     PacketListModel *packetlistmodel;
     PacketDecodeModel *packetdecodemodel;
     RawDecodeModel *rawdecodemodel;

@@ -4,6 +4,7 @@
 #include <QTreeView>
 #include <QVBoxLayout>
 #include <QSplitter>
+#include <QTimer>
 #include <unordered_map>
 
 #define SOH 0x1
@@ -2265,11 +2266,11 @@ public:
 PacketListModel::PacketListModel(std::deque<RawDecodePacketInfo> &packets) : packets(packets) {
 }
 
-void PacketListModel::beforeAddPacket() {
+void PacketListModel::beforeAddPackets() {
     beginInsertRows(QModelIndex(), packets.size(), packets.size());
 }
 
-void PacketListModel::afterAddPacket() {
+void PacketListModel::afterAddPackets() {
     endInsertRows();
 }
 
@@ -2611,6 +2612,10 @@ CommsDebugWindow::CommsDebugWindow(QWidget *parent, Qt::WindowFlags f)
     (17, rawdecode->fontMetrics().averageCharWidth() * 19);
     rawdecode->setSelectionBehavior(QAbstractItemView::SelectItems);
 
+    insertTimer = new QTimer(this);
+    insertTimer->setInterval(300);
+    insertTimer->setSingleShot(true);
+
     connect(rawdecodemodel, &QAbstractItemModel::rowsInserted,
     this, [this](const QModelIndex &parent, int first, int last) {
         rawdecode->expandRecursively(parent);
@@ -2661,6 +2666,15 @@ CommsDebugWindow::CommsDebugWindow(QWidget *parent, Qt::WindowFlags f)
         }
     });
 
+    connect(insertTimer, &QTimer::timeout,
+            this, [this](){
+        packetlistmodel->beforeAddPackets();
+        for(auto &pi : insertpackets) {
+            packets.push_back(pi);
+        }
+        packetlistmodel->afterAddPackets();
+        insertpackets.clear();
+    });
 }
 
 CommsDebugWindow::~CommsDebugWindow() {
@@ -2698,9 +2712,10 @@ void CommsDebugWindow::monitorInput(InputPacketState state,
     loc.end = pi.raw.size();
     rawDecoder->decodePacket(pi, loc);
 
-    packetlistmodel->beforeAddPacket();
-    packets.push_back(pi);
-    packetlistmodel->afterAddPacket();
+    insertpackets.push_back(pi);
+
+    if(!insertTimer->isActive())
+        insertTimer->start();
 }
 
 void CommsDebugWindow::monitorOutput(OutputPacketState state,
@@ -2715,9 +2730,10 @@ void CommsDebugWindow::monitorOutput(OutputPacketState state,
     loc.end = pi.raw.size();
     rawDecoder->decodePacket(pi, loc);
 
-    packetlistmodel->beforeAddPacket();
-    packets.push_back(pi);
-    packetlistmodel->afterAddPacket();
+    insertpackets.push_back(pi);
+
+    if(!insertTimer->isActive())
+        insertTimer->start();
 }
 
 
