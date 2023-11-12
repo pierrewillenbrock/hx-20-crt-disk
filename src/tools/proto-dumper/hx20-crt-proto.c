@@ -31,9 +31,9 @@ int fd;
 #define WRITESUMb(v) do { uint8_t __b = (v); if(write(fd,&__b,1) != 1) return -1; sum += __b; } while(0)
 
 int send_packet(uint16_t sid, uint16_t did, uint8_t fnc, uint16_t size,
-                 uint8_t *buf) __attribute__((warn_unused_result));
+                uint8_t *buf) __attribute__((warn_unused_result));
 int send_packet(uint16_t sid, uint16_t did, uint8_t fnc, uint16_t size,
-                 uint8_t *buf) {
+                uint8_t *buf) {
     uint8_t sum;
     uint8_t fmt = 1;
     uint8_t b;
@@ -116,9 +116,9 @@ uint8_t cur_x = 0;
 uint8_t cur_y = 0;
 
 int got_packet(uint16_t sid, uint16_t did, uint8_t fnc, uint16_t size,
-                uint8_t *inbuf) __attribute__((warn_unused_result));
+               uint8_t *inbuf) __attribute__((warn_unused_result));
 int got_packet(uint16_t sid, uint16_t did, uint8_t fnc, uint16_t size,
-                uint8_t *inbuf) {
+               uint8_t *inbuf) {
     uint8_t b;
     switch(fnc) {
     case 0x80:
@@ -323,8 +323,7 @@ int text() {
                   did_l | (did_h << 8),
                   fnc,
                   (siz_l | (siz_h << 8))+1,
-                  buf) < 0)
-    {
+                  buf) < 0) {
         free(buf);
         return -1;
     }

@@ -199,7 +199,7 @@ public:
 ImgSearch::ImgSearch(DiskDriveInterface *drive, uint8_t pattern_us,
                      uint8_t const *pattern, uint8_t pattern_extent)
     : drive(drive), pattern_us(pattern_us), pattern_extent(pattern_extent), ent(0) {
-        memcpy(this->pattern_filenametype, pattern, 11);
+    memcpy(this->pattern_filenametype, pattern, 11);
 }
 
 ImgSearch::~ImgSearch() = default;
@@ -378,7 +378,7 @@ uint8_t ImgFCB::write(uint32_t record, uint8_t &cur_extent, uint8_t &cur_record,
             return BDOS_WRITE_ERROR;
         }
         ent = last_ent;
-    } else if (extentGroupFromRecord(records_in_file) != extentGroupFromRecord(record)) {
+    } else if(extentGroupFromRecord(records_in_file) != extentGroupFromRecord(record)) {
         //find the correct extent
         this->dirent[12] = (this->dirent[12] & 0xe0) | ((extentGroupFromRecord(record) << 1) & 0x1e);
         this->dirent[14] = (this->dirent[14] & 0xf0) | (extentHighFromRecord(record) & 0x0f);
@@ -444,7 +444,7 @@ uint8_t ImgFCB::read(uint32_t record, uint8_t &cur_extent, uint8_t &cur_record,
     if(records_in_file <= record) {
         printf("read: requested record %d, but only %d in file\n", record, records_in_file);
         return BDOS_READ_ERROR;
-    } else if (extentGroupFromRecord(records_in_file) != extentGroupFromRecord(record)) {
+    } else if(extentGroupFromRecord(records_in_file) != extentGroupFromRecord(record)) {
         //find the correct extent
         this->dirent[12] = (this->dirent[12] & 0xe0) | ((extentGroupFromRecord(record) << 1) & 0x1e);
         this->dirent[14] = (this->dirent[14] & 0xf0) | (extentHighFromRecord(record) & 0x0f);
@@ -521,7 +521,7 @@ void TF20DriveDiskImage::file_close(void *_fcb) {
 void TF20DriveDiskImage::file_find_first(uint8_t us, uint8_t const *pattern, uint8_t extent, void *dir_entry, std::string &filename) {
     dirSearch = std::make_unique<ImgSearch>(drive.get(), us, pattern, extent);
 
-    uint8_t *obuf = (uint8_t*)dir_entry;
+    uint8_t *obuf = (uint8_t *)dir_entry;
     uint8_t res = dirSearch->findNext(obuf);
     filename = hx20ToUnixFilename(obuf+1);
     if(res != BDOS_OK)
@@ -562,7 +562,7 @@ void *TF20DriveDiskImage::file_create(uint8_t us, uint8_t const *filename, uint8
 }
 
 void TF20DriveDiskImage::file_rename(uint8_t old_us, uint8_t const *old_filename, uint8_t old_extent,
-                 uint8_t new_us, uint8_t const *new_filename, uint8_t new_extent) {
+                                     uint8_t new_us, uint8_t const *new_filename, uint8_t new_extent) {
     uint8_t dir_ent[32];
     uint8_t pattern[15] = {0};
     pattern[0] = old_us;
@@ -584,15 +584,15 @@ void TF20DriveDiskImage::file_rename(uint8_t old_us, uint8_t const *old_filename
 }
 
 void TF20DriveDiskImage::file_read(void *_fcb, uint32_t record,
-                  uint8_t &cur_extent, uint8_t &cur_record, void *buffer) {
+                                   uint8_t &cur_extent, uint8_t &cur_record, void *buffer) {
     ImgFCB *fcb = reinterpret_cast<ImgFCB *>(_fcb);
-    uint8_t res = fcb->read(record, cur_extent, cur_record, (uint8_t*)buffer);
+    uint8_t res = fcb->read(record, cur_extent, cur_record, (uint8_t *)buffer);
     if(res != BDOS_OK)
         throw BDOSError(res);
 }
 
 void TF20DriveDiskImage::file_write(void *_fcb, void const *buffer, uint32_t record,
-                   uint8_t &cur_extent, uint8_t &cur_record) {
+                                    uint8_t &cur_extent, uint8_t &cur_record) {
     ImgFCB *fcb = reinterpret_cast<ImgFCB *>(_fcb);
     uint8_t res = fcb->write(record, cur_extent, cur_record, (uint8_t const *)buffer);
     if(res != BDOS_OK)

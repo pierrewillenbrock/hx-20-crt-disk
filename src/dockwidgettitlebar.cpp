@@ -20,8 +20,7 @@
 DockWidgetTitleBar::DockWidgetTitleBar(QWidget *parent, Qt::WindowFlags f)
     : QWidget(parent, f), m_lastDockWidget(nullptr),
       m_configureButton(nullptr), m_floatButton(nullptr), m_closeButton(nullptr),
-      m_layoutStatus(NoLayout)
-{
+      m_layoutStatus(NoLayout) {
     m_configureButton = new QToolButton();
     m_configureButton->setAutoRaise(true);
     //menuButton->setStyleSheet(QString("border: none;"));
@@ -41,8 +40,7 @@ DockWidgetTitleBar::DockWidgetTitleBar(QWidget *parent, Qt::WindowFlags f)
     m_closeButton->setIcon(icon);
 }
 
-void DockWidgetTitleBar::paintEvent(QPaintEvent*)
-{
+void DockWidgetTitleBar::paintEvent(QPaintEvent *) {
     QPainter painter(this);
 
     QDockWidget *dockWidget = qobject_cast<QDockWidget *>(parentWidget());
@@ -177,7 +175,7 @@ void DockWidgetTitleBar::relayout() {
         if((dockWidget->features() & QDockWidget::DockWidgetClosable) &&
                 !m_closeConnection) {
             m_closeConnection = connect(m_closeButton, &QToolButton::clicked,
-                                      dockWidget, &QDockWidget::close);
+                                        dockWidget, &QDockWidget::close);
         }
         if(!(dockWidget->features() & QDockWidget::DockWidgetClosable) &&
                 m_closeConnection) {

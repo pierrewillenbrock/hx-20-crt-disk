@@ -134,7 +134,7 @@ void HX20DiskDevice::setCurrentFilename(int drive_code, std::string const &filen
 
 class FileCloser {
 private:
-    TF20DriveInterface* drive;
+    TF20DriveInterface *drive;
     void *fcb;
 public:
     FileCloser(TF20DriveInterface *drive, void *fcb)
@@ -1274,7 +1274,7 @@ int HX20DiskDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
                 throw BDOSError(BDOS_FILE_NOT_FOUND);
             }
         } catch(BDOSError const &e) {
-                obuf[2+128] = e.getBDOSError();
+            obuf[2+128] = e.getBDOSError();
         }
         hexdump((char *)obuf,128+3);
         return conn->sendPacket(did, sid, fnc, 2+128+1, obuf);
@@ -1299,10 +1299,9 @@ HX20DiskDevice::DriveInfo::~DriveInfo() =default;
 
 HX20DiskDevice::HX20DiskDevice(int ddno)
     : ddno(ddno),
-    drive_1(1, new QLabel(), new QLineEdit(), std::make_unique<QTimer>()),
-    drive_2(2, new QLabel(), new QLineEdit(), std::make_unique<QTimer>()),
-    settingsConfig(nullptr), settingsPresets(nullptr)
-{
+      drive_1(1, new QLabel(), new QLineEdit(), std::make_unique<QTimer>()),
+      drive_2(2, new QLabel(), new QLineEdit(), std::make_unique<QTimer>()),
+      settingsConfig(nullptr), settingsPresets(nullptr) {
     activeIcon.addFile(":/16/disk_active.png", QSize(16,16));
     activeIcon.addFile(":/32/disk_active.png", QSize(32,32));
     inactiveIcon.addFile(":/16/disk_inactive.png", QSize(16,16));
@@ -1377,7 +1376,7 @@ void HX20DiskDevice::ejectDisk(int drive_code) {
 }
 
 void HX20DiskDevice::addDocksToMainWindow(QMainWindow *window,
-                                          QMenu *devices_menu) {
+        QMenu *devices_menu) {
     for(int i = 1; i <= 2; i++) {
         drive(i).dock = new QDockWidget(window);
         drive(i).dock->setObjectName(QString("diskdock_%1_%2").arg(ddno).arg(i));
@@ -1400,7 +1399,7 @@ void HX20DiskDevice::addDocksToMainWindow(QMainWindow *window,
             if(!result.isEmpty()) {
                 try {
                     this->setDiskDirectory(i, result.toStdString());
-                } catch (std::exception &e) {
+                } catch(std::exception &e) {
                     QMessageBox::critical(nullptr,
                                           tr("Failed to open"),
                                           tr("Failed to open %1 as a disk directory:\n%2").arg(result).arg(e.what()));
@@ -1448,7 +1447,7 @@ void HX20DiskDevice::addDocksToMainWindow(QMainWindow *window,
 void HX20DiskDevice::setSettings(Settings::Group *settingsConfig,
                                  Settings::Group *settingsPresets) {
     if(this->settingsConfig == settingsConfig &&
-        this->settingsPresets == settingsPresets)
+            this->settingsPresets == settingsPresets)
         return;
     if(this->settingsConfig) {
         disconnect(this->settingsConfig, &Settings::Group::changedChildKey,

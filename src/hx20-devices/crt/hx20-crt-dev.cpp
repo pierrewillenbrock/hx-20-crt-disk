@@ -12,8 +12,7 @@
 #include "../../settings.hpp"
 
 HX20CrtGraphicsView::HX20CrtGraphicsView(QWidget *parent, Qt::WindowFlags f)
-    : QWidget(parent, f), width(128), height(96), zoom(1.0)
-{
+    : QWidget(parent, f), width(128), height(96), zoom(1.0) {
     image = std::make_unique<QImage>(width, height, QImage::Format::Format_RGB32);
     image_data.resize(width * height);
     border_color = qRgb(0,0,0);
@@ -1291,7 +1290,7 @@ int HX20CrtDevice::gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
         //Not seen
         if(access_x+access_y*virt_width >= 0 &&
                 (unsigned)(access_x+access_y*virt_width) < char_data.size())
-        char_data[access_x+access_y*virt_width] = inbuf[0];
+            char_data[access_x+access_y*virt_width] = inbuf[0];
         redrawText();
         return 0;
     }
@@ -1417,7 +1416,7 @@ void HX20CrtDevice::addDocksToMainWindow(QMainWindow *window,
         assert(this->settingsConfig);
         assert(this->settingsPresets);
         auto cfg = std::make_unique<HX20CrtDeviceGfxCfg>(this->settingsConfig->group("gfx"),
-            this->settingsPresets->group("gfx"), window);
+                   this->settingsPresets->group("gfx"), window);
         if(cfg->exec() == QDialog::Accepted) {
         }
     });
@@ -1506,7 +1505,7 @@ void initBuiltinColorset(Settings::Group *group, const QRgb *color_map, size_t s
 void HX20CrtDevice::setSettings(Settings::Group *settingsConfig,
                                 Settings::Group *settingsPresets) {
     if(this->settingsConfig == settingsConfig &&
-        this->settingsPresets == settingsPresets)
+            this->settingsPresets == settingsPresets)
         return;
     if(this->settingsConfig) {
         disconnect(this->settingsConfig, &Settings::Group::changedChildKey,

@@ -17,8 +17,7 @@ class HX20CrtDevice;
 class HX20DiskDevice;
 class HX20SerialConnection;
 
-class MainWindow : public QMainWindow
-{
+class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     QSettings settings;

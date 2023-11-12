@@ -5,7 +5,7 @@
 #include <QFileInfo>
 
 TelediskImageDrive::TelediskImageDrive(std::string const &filename)
-: filename(filename) {
+    : filename(filename) {
     QFileInfo fi(filename.c_str());
     if(fi.exists()) {
         diskimage = std::make_unique<TeleDiskParser::Disk>(filename.c_str());
@@ -23,7 +23,7 @@ void TelediskImageDrive::reset() {
 }
 
 bool TelediskImageDrive::write(CHS const &chs,
-           void const *buffer, uint8_t sector_size_code) {
+                               void const *buffer, uint8_t sector_size_code) {
     TeleDiskParser::CHS tdchs(chs.idCylinder, chs.idSide, chs.idSector);
     auto sector = diskimage->findSector(tdchs);
     if(!sector)
@@ -39,7 +39,7 @@ bool TelediskImageDrive::write(CHS const &chs,
 }
 
 bool TelediskImageDrive::format(uint8_t track, uint8_t head,
-            uint8_t num_sectors, uint8_t sector_size_code) {
+                                uint8_t num_sectors, uint8_t sector_size_code) {
     //clear out all sectors belonging to this head
     TeleDiskParser::Track *t = diskimage->findTrack(track, head, true);
     if(!t)
@@ -69,7 +69,7 @@ bool TelediskImageDrive::size(CHS &chs) {
 }
 
 bool TelediskImageDrive::read(CHS const &chs, void *buffer,
-          uint8_t sector_size_code) {
+                              uint8_t sector_size_code) {
     TeleDiskParser::CHS tdchs(chs.idCylinder, chs.idSide, chs.idSector);
     auto sector = diskimage->findSector(tdchs);
     if(!sector)

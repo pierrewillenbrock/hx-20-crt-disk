@@ -29,7 +29,7 @@ public:
     std::array<QRgb, 256> color_map;
     std::unique_ptr<QImage> image;
     QRgb border_color;
-    HX20CrtGraphicsView(QWidget* parent = nullptr, Qt::WindowFlags f = Qt::WindowFlags());
+    HX20CrtGraphicsView(QWidget *parent = nullptr, Qt::WindowFlags f = Qt::WindowFlags());
     ~HX20CrtGraphicsView();
     virtual QSize sizeHint() const override;
 public slots:
@@ -86,8 +86,8 @@ private:
 protected:
     virtual int getDeviceID() const override;
     virtual int gotPacket(uint16_t sid, uint16_t did, uint8_t fnc,
-                           uint16_t size, uint8_t *buf,
-                           HX20SerialConnection *conn) override;
+                          uint16_t size, uint8_t *buf,
+                          HX20SerialConnection *conn) override;
 public:
     HX20CrtDevice();
     ~HX20CrtDevice();

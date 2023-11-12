@@ -30,7 +30,7 @@ private:
     uint8_t bdos_error;
 public:
     BDOSError(uint8_t bdos_error) : std::runtime_error("BDOS Error"), bdos_error(bdos_error) {}
-    BDOSError(uint8_t bdos_error, const std::string& what_arg ) : std::runtime_error(what_arg), bdos_error(bdos_error) {}
+    BDOSError(uint8_t bdos_error, const std::string &what_arg) : std::runtime_error(what_arg), bdos_error(bdos_error) {}
     BDOSError(uint8_t bdos_error, const char *what_arg) : std::runtime_error(what_arg), bdos_error(bdos_error) {}
     BDOSError(const BDOSError &other) noexcept = default;
     uint8_t getBDOSError() const { return bdos_error; }
@@ -64,7 +64,7 @@ public:
                             uint8_t &cur_extent, uint8_t &cur_record) =0;
     //0x23
     virtual void file_size(void *fcb, uint8_t &extent,
-                              uint8_t &record, uint32_t &records) =0;
+                           uint8_t &record, uint32_t &records) =0;
     //0x24
     virtual void file_tell(void *fcb, uint32_t &records) =0;
     //0x7b

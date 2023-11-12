@@ -80,7 +80,7 @@ static QStringList findTtys() {
         //skip any that do not have a driver
         //we could probably also reduce that to just device?
         if(access((std::string("/sys/class/tty/")+ent->d_name+std::string("/device/driver")).c_str(),
-                   F_OK) != 0)
+                  F_OK) != 0)
             continue;
         //read the device_id
         std::ifstream f(std::string("/sys/class/tty/")+ent->d_name+std::string("/dev"));
@@ -129,8 +129,8 @@ MainWindow::MainWindow(QWidget *parent, Qt::WindowFlags flags) :
     disk_devs({
         std::make_unique<HX20DiskDevice>(0),
         std::make_unique<HX20DiskDevice>(1)}),
-    commsdbg(new CommsDebugWindow()), config_action_group(new QActionGroup(this))
-{
+    commsdbg(new CommsDebugWindow()),
+    config_action_group(new QActionGroup(this)) {
     commsdbg->setObjectName("commsdebugdock");
     currentConfiguration = settingsRoot->value("CurrentConfiguration",0).toInt();
     if(currentConfiguration >= settingsRoot->arraySize("Configuration"))
@@ -283,7 +283,7 @@ bool MainWindow::setConfigFromCommandline(QString const &config) {
 }
 
 void MainWindow::setupDrive(std::unique_ptr< HX20DiskDevice > const &dev,
-                      int drive_code, QString const &disk) {
+                            int drive_code, QString const &disk) {
     QFileInfo fi(disk);
     if(fi.isDir()) {
         try {

@@ -14,46 +14,6 @@ class QTimer;
 
 QT_END_NAMESPACE
 
-#if 0
-struct SubPacketInfo {
-    enum Type {
-        SelectRequest,
-        SelectResponse,
-        PacketHeaderRequest,
-        PacketHeaderResponse,
-        PacketTextRequest,
-        PacketTextResponse,
-        ReverseDirection,
-        InvalidPacketHeaderRequest,
-        InvalidPacketHeaderResponse,
-        InvalidPacketTextRequest,
-        InvalidPacketTextResponse,
-        InvalidReverseDirection,
-        Raw,
-    };
-    Type t;
-    uint16_t sid;//SelectRequest, HeaderRequest, (echoed in TextRequest)
-    uint16_t did;//SelectRequest, HeaderRequest, (echoed in TextRequest)
-    uint16_t fnc;//SelectResponse, HeaderResponse, TextResponse, HeaderRequest, (echoed in TextRequest)
-    uint16_t size;//HeaderRequest, (echoed in TextRequest)
-    std::vector<uint8_t> bytes;//TextRequest
-    std::vector<uint8_t> raw;//all
-};
-
-struct OldPacketInfo {
-    enum Type {
-        GotPacketHeader,
-        GotPacket,
-        SentPacket,
-        GotSelect,
-        GotRaw,
-        SentRaw
-    };
-    Type t;
-    std::vector<SubPacketInfo> subpackets;
-};
-#endif
-
 struct DecodeLocation {
     //the base is only valid during decode. later, the base is used as an
     //indication that the rest of the location is useful. When a decoder

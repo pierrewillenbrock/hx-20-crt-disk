@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
     //otherwise, use the one from the configuration
     if(parser.isSet("device")) {
         mainWin.connectCommunication(parser.value("device"));
-    } else if (mainWin.settingsConfigurationRoot->contains("comms_device")) {
+    } else if(mainWin.settingsConfigurationRoot->contains("comms_device")) {
         try {
             mainWin.connectCommunication(mainWin.settingsConfigurationRoot->value("comms_device").toString());
         } catch(std::exception &e) {

@@ -20,70 +20,70 @@
 #include "hx20-ser-proto.hpp"
 
 /* the tf-20 expects this sequence:
-  EOT
-  {
-    EOT
-    (less than 21 timeout loops)
-    anything
-  |
-    (less than 21 timeout loops)
-    0x31
-  }
-  Device ID
-  anything
-  ENQ
-  (sends ACK)|(sends NAK, restart where?)
-  {
-    EOT
-    (restarting(where?) after first EOT)
-  |
-    SOT
-    fmt
-    did
-    sid
-    fnc
-    siz
-    hcs
-    (sends ACK)|(sends NAK, restart where?)
-    [
-      ENQ
-      (sends ACK)
-    ]
-    {
-      EOT
-      (restarting(where?) after first EOT)
-    |
-      STX
-      data
-      ETX
-      checksum over all of the above
-      (sends ACK)|(sends NAK, restart where?)
-      [
-        ENQ
-        (sends ACK)
-      ]
-      EOT
-    }
-  }
-
-  When the TF-20 sends a packet, it does like this:
-  up to 4 restarts over all. Cancels the command if number of restarts greater than 4
-  start:
-    (send SOH, fmt, did, sid, fnc, siz, hcs)
-  header_recv:
-    no data or NAK => restart at header_recv |
-    ACK => continue |
-    any other data: restart at start
-
-    reset restart counter to 4
-  start_buffer:
-    (send STX, buffer, ETX, hcs)
-  buffer_recv:
-    no data or NAK => restart at buffer_recv |
-    ACK => continue |
-    any other data: restart at start_buffer
-
-    (send EOT)
+ * EOT
+ * {
+ *   EOT
+ *   (less than 21 timeout loops)
+ *   anything
+ * |
+ *   (less than 21 timeout loops)
+ *   0x31
+ * }
+ * Device ID
+ * anything
+ * ENQ
+ * (sends ACK)|(sends NAK, restart where?)
+ * {
+ *   EOT
+ *   (restarting(where?) after first EOT)
+ * |
+ *   SOT
+ *   fmt
+ *   did
+ *   sid
+ *   fnc
+ *   siz
+ *   hcs
+ *   (sends ACK)|(sends NAK, restart where?)
+ *   [
+ *     ENQ
+ *     (sends ACK)
+ *   ]
+ *   {
+ *     EOT
+ *     (restarting(where?) after first EOT)
+ *   |
+ *     STX
+ *     data
+ *     ETX
+ *     checksum over all of the above
+ *     (sends ACK)|(sends NAK, restart where?)
+ *     [
+ *       ENQ
+ *       (sends ACK)
+ *     ]
+ *     EOT
+ *   }
+ * }
+ *
+ * When the TF-20 sends a packet, it does like this:
+ * up to 4 restarts over all. Cancels the command if number of restarts greater than 4
+ * start:
+ *   (send SOH, fmt, did, sid, fnc, siz, hcs)
+ * header_recv:
+ *   no data or NAK => restart at header_recv |
+ *   ACK => continue |
+ *   any other data: restart at start
+ *
+ *   reset restart counter to 4
+ * start_buffer:
+ *   (send STX, buffer, ETX, hcs)
+ * buffer_recv:
+ *   no data or NAK => restart at buffer_recv |
+ *   ACK => continue |
+ *   any other data: restart at start_buffer
+ *
+ *   (send EOT)
  */
 
 #if 0
@@ -126,27 +126,27 @@ static int readTimeout(int fd, void *buf, size_t nbytes, int timeout) {
 #define WRITESUMb(v) do { uint8_t __b(v); if(write(fd,&__b,1) != 1) return -1; sum += __b; } while(0)
 
 int HX20SerialConnection::sendPacket(uint16_t sid, uint16_t did, uint8_t fnc,
-                                      uint16_t size, uint8_t *buf) {
+                                     uint16_t size, uint8_t *buf) {
     /*
-  When the TF-20 sends a packet, it does like this:
-  up to 4 restarts over all. Cancels the command if number of restarts greater than 4
-  start:
-    (send SOH, fmt, did, sid, fnc, siz, hcs)
-  header_recv:
-    no data or NAK => restart at header_recv |
-    ACK => continue |
-    any other data: restart at start
-
-    reset restart counter to 4
-  start_buffer:
-    (send STX, buffer, ETX, hcs)
-  buffer_recv:
-    no data or NAK => restart at buffer_recv |
-    ACK => continue |
-    any other data: restart at start_buffer
-
-    (send EOT)
-*/
+     * When the TF-20 sends a packet, it does like this:
+     * up to 4 restarts over all. Cancels the command if number of restarts greater than 4
+     * start:
+     *   (send SOH, fmt, did, sid, fnc, siz, hcs)
+     * header_recv:
+     *   no data or NAK => restart at header_recv |
+     *   ACK => continue |
+     *   any other data: restart at start
+     *
+     *   reset restart counter to 4
+     * start_buffer:
+     *   (send STX, buffer, ETX, hcs)
+     * buffer_recv:
+     *   no data or NAK => restart at buffer_recv |
+     *   ACK => continue |
+     *   any other data: restart at start_buffer
+     *
+     *   (send EOT)
+     */
     uint8_t sum;
     uint8_t fmt = 1;//slave sending a block to master
     uint8_t b;
@@ -226,7 +226,7 @@ int HX20SerialConnection::sendPacket(uint16_t sid, uint16_t did, uint8_t fnc,
                                 std::vector<uint8_t>(1, b));
             if(b == ACK) {
                 break;
-            } else if (b == NAK || b == EOT) {
+            } else if(b == NAK || b == EOT) {
                 continue;
             } else {
                 //WAK handling would be:
@@ -276,7 +276,7 @@ int HX20SerialConnection::sendPacket(uint16_t sid, uint16_t did, uint8_t fnc,
                                 std::vector<uint8_t>(1, b));
             if(b == ACK) {
                 break;
-            } else if (b == NAK || b == EOT) {
+            } else if(b == NAK || b == EOT) {
                 continue;
             } else {
                 //WAK handling would be:
@@ -327,8 +327,8 @@ int HX20SerialConnection::receiveByte(uint8_t b) {
         selectedSlaveID = buf[1];
         selectedMasterID = buf[2];
         EPSP_DEBUG("Selected 0x%04x => 0x%04x\n",
-               selectedMasterID,
-               selectedSlaveID);
+                   selectedMasterID,
+                   selectedSlaveID);
         for(auto &m : monitors)
             m->monitorInput(HX20SerialMonitor::GotSelectRequest, buf);
         buf.clear();
@@ -495,8 +495,8 @@ int HX20SerialConnection::receiveByte(uint8_t b) {
         if(dev) {
             fflush(stdout);
             int res = dev->gotPacket(
-                   did, sid, fnc, siz+1, buf.data()+1,
-                   this);
+                      did, sid, fnc, siz+1, buf.data()+1,
+                      this);
             buf.clear();
             return res;
         }
@@ -588,7 +588,7 @@ int HX20SerialConnection::handleEvents(struct pollfd const *pfd, int nfds) {
 
 void HX20SerialConnection::registerDevice(HX20SerialDevice *dev) {
     EPSP_DEBUG("Registering 0x%02x for %s\n",
-           dev->getDeviceID(), typeid(dev).name());
+               dev->getDeviceID(), typeid(dev).name());
     fflush(stdout);
     if(devices.find(dev->getDeviceID()) != devices.end())
         throw std::runtime_error("There already is a device with the same ID");

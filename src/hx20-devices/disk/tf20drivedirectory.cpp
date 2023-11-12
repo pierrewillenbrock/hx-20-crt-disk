@@ -51,7 +51,7 @@ static bool matchFilename(char const *name, char const *pattern) {
             if(*pattern != '*')
                 pattern++;
             continue;
-        } else{
+        } else {
             return false;
         }
     }
@@ -68,7 +68,7 @@ static bool matchFilename(char const *name, char const *pattern) {
             if(*pattern != '*')
                 pattern++;
             continue;
-        } else{
+        } else {
             return false;
         }
     }
@@ -205,8 +205,7 @@ uint8_t DirFCB::read(uint32_t record,uint8_t *buf) {
 }
 
 TF20DriveDirectory::TF20DriveDirectory(std::string const &base_dir)
-    : base_dir(base_dir)
-{
+    : base_dir(base_dir) {
 }
 
 TF20DriveDirectory::~TF20DriveDirectory() =default;
@@ -219,7 +218,7 @@ void *TF20DriveDirectory::file_open(uint8_t us, uint8_t const *filename, uint8_t
     std::string unixfilename = hx20ToUnixFilename(filename);
     try {
         return new DirFCB((base_dir + "/" + unixfilename).c_str(), false);;
-    } catch (BDOSError const &e) {
+    } catch(BDOSError const &e) {
     }
     return new DirFCB((base_dir + "/." + unixfilename).c_str(), false);;
 }
@@ -317,17 +316,17 @@ void TF20DriveDirectory::file_rename(uint8_t old_us, uint8_t const *old_filename
 }
 
 void TF20DriveDirectory::file_read(void *_fcb, uint32_t record,
-                  uint8_t &cur_extent, uint8_t &cur_record, void *buffer) {
+                                   uint8_t &cur_extent, uint8_t &cur_record, void *buffer) {
     DirFCB *fcb = reinterpret_cast<DirFCB *>(_fcb);
     cur_extent = (record >> 7) & 0x1f;
     cur_record = record & 0x7f;
-    uint8_t res = fcb->read(record, (uint8_t*)buffer);
+    uint8_t res = fcb->read(record, (uint8_t *)buffer);
     if(res != BDOS_OK)
         throw BDOSError(res);
 }
 
 void TF20DriveDirectory::file_write(void *_fcb, void const *buffer, uint32_t record,
-                   uint8_t &cur_extent, uint8_t &cur_record) {
+                                    uint8_t &cur_extent, uint8_t &cur_record) {
     DirFCB *fcb = reinterpret_cast<DirFCB *>(_fcb);
     cur_extent = (record >> 7) & 0x1f;
     cur_record = record & 0x7f;
@@ -337,7 +336,7 @@ void TF20DriveDirectory::file_write(void *_fcb, void const *buffer, uint32_t rec
 }
 
 void TF20DriveDirectory::file_size(void *_fcb, uint8_t &extent,
-                  uint8_t &record, uint32_t &records) {
+                                   uint8_t &record, uint32_t &records) {
     DirFCB *fcb = reinterpret_cast<DirFCB *>(_fcb);
     uint64_t sz = fcb->size();
     records = (sz+127)/128;
@@ -368,7 +367,7 @@ void TF20DriveDirectory::disk_write(uint8_t track, uint8_t sector, void const *b
     if(!st.good()) {
         throw BDOSError(BDOS_WRITE_ERROR);
     }
-    st.write((char const*)buffer, 128);
+    st.write((char const *)buffer, 128);
     if(!st.good()) {
         throw BDOSError(BDOS_WRITE_ERROR);
     }
@@ -394,7 +393,7 @@ void TF20DriveDirectory::disk_read(uint8_t track, uint8_t sector, void *buffer) 
     if(!st.good()) {
         throw BDOSError(BDOS_READ_ERROR);
     }
-    st.read((char*)buffer, 128);
+    st.read((char *)buffer, 128);
     if(!st.good()) {
         throw BDOSError(BDOS_READ_ERROR);
     }

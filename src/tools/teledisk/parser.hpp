@@ -12,10 +12,10 @@ class Disk;
 
 class FormatError : public std::runtime_error {
 public:
-    explicit FormatError(const std::string& __arg) : std::runtime_error(__arg) {}
-    explicit FormatError(const char*__arg) : std::runtime_error(__arg) {}
-    FormatError(FormatError&&oth) noexcept : std::runtime_error(oth) {}
-    FormatError(const FormatError&) noexcept = default;
+    explicit FormatError(const std::string &__arg) : std::runtime_error(__arg) {}
+    explicit FormatError(const char *__arg) : std::runtime_error(__arg) {}
+    FormatError(FormatError &&oth) noexcept : std::runtime_error(oth) {}
+    FormatError(const FormatError &) noexcept = default;
 };
 
 struct CHS {

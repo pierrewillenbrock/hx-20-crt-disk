@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
         if(!disk1.comment != !disk2.comment) {
             std::cerr << "Comment mismatch" << std::endl;
             return 1;
-        } else if (disk1.comment) {
+        } else if(disk1.comment) {
             if(disk1.comment->comment != disk2.comment->comment) {
                 std::cerr << "Comment text mismatch" << std::endl;
                 return 1;
@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
                     return 1;
                 }
                 if(memcmp(sector.data.data(), othsector->data.data(),
-                    sector.data.size()) != 0) {
+                          sector.data.size()) != 0) {
                     std::cerr << "Sector data mismatch" << std::endl;
                     return 1;
                 }

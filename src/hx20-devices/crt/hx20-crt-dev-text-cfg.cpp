@@ -64,9 +64,9 @@ static QIcon genCharIcon(QString const &v, std::unordered_map<int, QFont> const 
 
 static QString nameForColor(QColor const &color) {
     for(auto &n : QColor::colorNames()) {
-      if(color == QColor(n)) {
-        return n;
-      }
+        if(color == QColor(n)) {
+            return n;
+        }
     }
     return color.name();
 }
@@ -221,8 +221,7 @@ HX20CrtDeviceTextCfg::HX20CrtDeviceTextCfg(Settings::Group *settingsConfig,
         Settings::Group *settingsPresets,
         QWidget *parent, Qt::WindowFlags f)
     : QDialog(parent, f), ui(std::make_unique<Ui::HX20CrtDeviceTextCfgUi>()),
-      settingsConfig(settingsConfig), settingsPresets(settingsPresets)
-{
+      settingsConfig(settingsConfig), settingsPresets(settingsPresets) {
     ui->setupUi(this);
 
     ui->spbVirtualSizeX->setValue(settingsConfig->value("virtualSizeX").toInt());

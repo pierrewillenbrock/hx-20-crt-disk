@@ -121,9 +121,9 @@ bool ColorsetModel::setData(const QModelIndex &index, const QVariant &value, int
 
 Qt::ItemFlags ColorsetModel::flags(const QModelIndex &index) const {
     return /*Qt::ItemFlag::ItemIsEditable |*/ // only when we have a custom editor. otherwise, we will just catch the double click/item activate/whatever it is called.
-           Qt::ItemFlag::ItemIsEnabled |
-           Qt::ItemFlag::ItemIsSelectable |
-           Qt::ItemFlag::ItemNeverHasChildren;
+    Qt::ItemFlag::ItemIsEnabled |
+    Qt::ItemFlag::ItemIsSelectable |
+    Qt::ItemFlag::ItemNeverHasChildren;
 }
 
 QModelIndex ColorsetModel::index(int row, int column, const QModelIndex &parent) const {
@@ -212,8 +212,7 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
         Settings::Group *settingsPresets,
         QWidget *parent, Qt::WindowFlags f)
     : QDialog(parent, f), ui(std::make_unique<Ui::HX20CrtDeviceGfxCfgUi>()),
-      settingsConfig(settingsConfig), settingsPresets(settingsPresets)
-{
+      settingsConfig(settingsConfig), settingsPresets(settingsPresets) {
     ui->setupUi(this);
 
     ui->spbSizeX->setValue(settingsConfig->value("sizeX").toInt());
@@ -308,7 +307,7 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
     this, [this](int idx, QString const &value) {
         //if the current char set map is builtin, duplicate it.
         int colorsetnum = ui->trwColorPresets->currentItem()->data(0,
-                         Qt::ItemDataRole::UserRole).toInt();
+                          Qt::ItemDataRole::UserRole).toInt();
         if(colorsetnum < 0 ||
                 colorsets.size() <= (unsigned)colorsetnum)
             return;
@@ -320,7 +319,7 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
     connect(ui->tlbColorSetNew, &QToolButton::clicked,
     this, [this]() {
         int colorsetnum = ui->trwColorPresets->currentItem()->data(0,
-                         Qt::ItemDataRole::UserRole).toInt();
+                          Qt::ItemDataRole::UserRole).toInt();
         if(colorsetnum < 0 ||
                 colorsets.size() <= (unsigned)colorsetnum)
             return;
@@ -329,7 +328,7 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
     connect(ui->tlbColorSetDelete, &QToolButton::clicked,
     this, [this]() {
         int colorsetnum = ui->trwColorPresets->currentItem()->data(0,
-                         Qt::ItemDataRole::UserRole).toInt();
+                          Qt::ItemDataRole::UserRole).toInt();
         if(colorsetnum < 0 ||
                 colorsets.size() <= (unsigned)colorsetnum)
             return;
@@ -348,7 +347,7 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
     connect(ui->tlbColorSetMoveUp, &QToolButton::clicked,
     this, [this]() {
         int colorsetnum = ui->trwColorPresets->currentItem()->data(0,
-                         Qt::ItemDataRole::UserRole).toInt() - 1;
+                          Qt::ItemDataRole::UserRole).toInt() - 1;
         if(colorsetnum < 0 ||
                 colorsets.size() <= (unsigned)colorsetnum+1)
             return;
@@ -356,7 +355,7 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
         colorsets[colorsetnum] = colorsets[colorsetnum+1];
         colorsets[colorsetnum+1] = set;
         ui->trwColorPresets->insertTopLevelItem(colorsetnum+1,
-                                            ui->trwColorPresets->takeTopLevelItem(colorsetnum));
+                                                ui->trwColorPresets->takeTopLevelItem(colorsetnum));
         swapItems(ui->cobColorSet1, colorsetnum, colorsetnum+1);
         swapItems(ui->cobColorSet2, colorsetnum, colorsetnum+1);
         int cidxb = ui->cobBorderColor->currentIndex();
@@ -368,7 +367,7 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
     connect(ui->tlbColorSetMoveDown, &QToolButton::clicked,
     this, [this]() {
         int colorsetnum = ui->trwColorPresets->currentItem()->data(0,
-                         Qt::ItemDataRole::UserRole).toInt();
+                          Qt::ItemDataRole::UserRole).toInt();
         if(colorsetnum < 0 ||
                 colorsets.size() <= (unsigned)colorsetnum+1)
             return;
@@ -376,7 +375,7 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
         colorsets[colorsetnum] = colorsets[colorsetnum+1];
         colorsets[colorsetnum+1] = set;
         ui->trwColorPresets->insertTopLevelItem(colorsetnum+1,
-                                            ui->trwColorPresets->takeTopLevelItem(colorsetnum));
+                                                ui->trwColorPresets->takeTopLevelItem(colorsetnum));
         swapItems(ui->cobColorSet1, colorsetnum, colorsetnum+1);
         swapItems(ui->cobColorSet2, colorsetnum, colorsetnum+1);
         int cidxb = ui->cobBorderColor->currentIndex();
@@ -388,7 +387,7 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
     connect(ui->lsvColors, &QListView::doubleClicked,
     this, [this](QModelIndex const &index) {
         int colorsetnum = ui->trwColorPresets->currentItem()->data(0,
-                         Qt::ItemDataRole::UserRole).toInt();
+                          Qt::ItemDataRole::UserRole).toInt();
         if(colorsetnum < 0 ||
                 colorsets.size() <= (unsigned)colorsetnum)
             return;
@@ -413,7 +412,7 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
         ui->tlbColorDelete->setEnabled(current.isValid());
         ui->tlbColorMoveUp->setEnabled(current.row() > 0);
         int colorsetnum = ui->trwColorPresets->currentItem()->data(0,
-                         Qt::ItemDataRole::UserRole).toInt();
+                          Qt::ItemDataRole::UserRole).toInt();
         if(colorsetnum < 0 ||
                 colorsets.size() <= (unsigned)colorsetnum)
             return;
@@ -424,7 +423,7 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
     connect(ui->tlbColorNew, &QToolButton::clicked,
     this, [this]() {
         int colorsetnum = ui->trwColorPresets->currentItem()->data(0,
-                         Qt::ItemDataRole::UserRole).toInt();
+                          Qt::ItemDataRole::UserRole).toInt();
         if(colorsetnum < 0 ||
                 colorsets.size() <= (unsigned)colorsetnum)
             return;
@@ -449,7 +448,7 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
     connect(ui->tlbColorDelete, &QToolButton::clicked,
     this, [this]() {
         int colorsetnum = ui->trwColorPresets->currentItem()->data(0,
-                         Qt::ItemDataRole::UserRole).toInt();
+                          Qt::ItemDataRole::UserRole).toInt();
         if(colorsetnum < 0 ||
                 colorsets.size() <= (unsigned)colorsetnum)
             return;
@@ -471,7 +470,7 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
     connect(ui->tlbColorMoveUp, &QToolButton::clicked,
     this, [this]() {
         int colorsetnum = ui->trwColorPresets->currentItem()->data(0,
-                         Qt::ItemDataRole::UserRole).toInt();
+                          Qt::ItemDataRole::UserRole).toInt();
         if(colorsetnum < 0 ||
                 colorsets.size() <= (unsigned)colorsetnum)
             return;
@@ -492,14 +491,14 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
             ui->cobBorderColor->insertItem(colornum,
                                            genColoredIcon(set.colors[colornum]),
                                            QString("%1").arg(colornum),
-                                        colornum);
+                                           colornum);
             ui->cobBorderColor->insertItem(colornum+1,
                                            genColoredIcon(set.colors[colornum+1]),
                                            QString("%1").arg(colornum+1),
-                                        colornum+1);
+                                           colornum+1);
             if(cidx == colornum)
                 cidx = colornum+1;
-            else if (cidx == colornum+1)
+            else if(cidx == colornum+1)
                 cidx = colornum;
             ui->cobBorderColor->setCurrentIndex(cidx);
         }
@@ -513,7 +512,7 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
     connect(ui->tlbColorMoveDown, &QToolButton::clicked,
     this, [this]() {
         int colorsetnum = ui->trwColorPresets->currentItem()->data(0,
-                         Qt::ItemDataRole::UserRole).toInt();
+                          Qt::ItemDataRole::UserRole).toInt();
         if(colorsetnum < 0 ||
                 colorsets.size() <= (unsigned)colorsetnum)
             return;
@@ -534,14 +533,14 @@ HX20CrtDeviceGfxCfg::HX20CrtDeviceGfxCfg(Settings::Group *settingsConfig,
             ui->cobBorderColor->insertItem(colornum,
                                            genColoredIcon(set.colors[colornum]),
                                            QString("%1").arg(colornum),
-                                        colornum);
+                                           colornum);
             ui->cobBorderColor->insertItem(colornum+1,
                                            genColoredIcon(set.colors[colornum+1]),
                                            QString("%1").arg(colornum+1),
-                                        colornum+1);
+                                           colornum+1);
             if(cidx == colornum)
                 cidx = colornum+1;
-            else if (cidx == colornum+1)
+            else if(cidx == colornum+1)
                 cidx = colornum;
             ui->cobBorderColor->setCurrentIndex(cidx);
         }

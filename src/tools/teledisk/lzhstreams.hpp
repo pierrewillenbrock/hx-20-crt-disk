@@ -16,7 +16,7 @@ private:
     lzh::EncodeContext *ec;
 protected:
 #if LZHSTREAM_BUFFER_SIZE == 0
-    virtual int_type overflow ( int_type c = std::char_traits<char>::eof() ) override {
+    virtual int_type overflow(int_type c = std::char_traits<char>::eof()) override {
         //pbase, pptr, epptr, pbump
         //we could probably just take c (if not eof) and push that into the compressor
         if(c == std::char_traits<char>::eof())
@@ -43,7 +43,7 @@ public:
         while(true) {
             char ch[4];
             unsigned int _outlen = 4;
-            bool result = lzh::EncodeFinal((unsigned char*)ch, _outlen, ec);
+            bool result = lzh::EncodeFinal((unsigned char *)ch, _outlen, ec);
             if(_outlen > 0)
                 output.write(ch,_outlen);
             if(result)
@@ -77,7 +77,7 @@ protected:
             return och;
         //else put data in until it gives us something or the source is eof
         while(input.good()) {
-            input.read((char*)&ich, 1);
+            input.read((char *)&ich, 1);
             _inlen = 1;
             _outlen = 1;
             lzh::Decode(&ich, _inlen,

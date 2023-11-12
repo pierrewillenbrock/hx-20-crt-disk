@@ -6,9 +6,8 @@
 #include <stdio.h>
 
 unsigned int TestEncode(unsigned char *in, unsigned int inlen,
-                    unsigned char *out, unsigned int outlen)  /* compression */
-{
-    if (inlen == 0)
+                        unsigned char *out, unsigned int outlen) { /* compression */
+    if(inlen == 0)
         return 0;
 
     lzh::EncodeContext *context = lzh::BeginEncode();
@@ -37,9 +36,8 @@ unsigned int TestEncode(unsigned char *in, unsigned int inlen,
     return count;
 }
 
-unsigned int TestDecode(unsigned char *in, unsigned int inlen, unsigned char *out, unsigned int outlen)
-{
-    if (outlen == 0)
+unsigned int TestDecode(unsigned char *in, unsigned int inlen, unsigned char *out, unsigned int outlen) {
+    if(outlen == 0)
         return 0;
 
     lzh::DecodeContext *context = lzh::BeginDecode();
@@ -67,7 +65,7 @@ unsigned int TestDecode(unsigned char *in, unsigned int inlen, unsigned char *ou
     return count;
 }
 
-int main(int argc, char**argv) {
+int main(int argc, char **argv) {
     if(argc < 3) {
         fprintf(stderr, "No input and output file argument\n");
         return 1;

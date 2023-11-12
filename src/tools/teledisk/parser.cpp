@@ -48,7 +48,7 @@ public:
                                unsigned char const *end,
                                unsigned short initial = 0) {
         unsigned short crc = initial;
-        for(;begin != end; begin++) {
+        for(; begin != end; begin++) {
             crc = (crc ^ (*begin << 8));
             crc = ((crc << 8) ^ t.crcTable[(crc >> 8) & 0xff]);
         }
@@ -73,7 +73,7 @@ Sector::Sector(std::basic_istream<char> &s) {
     flags = (SectorFlags)sh.flags;
 
     if(flags & NoDataMask) {
-            return;
+        return;
     }
     data.resize(128 << idLengthCode);//2^idLengthCode * 128
     unsigned short clen;
@@ -130,15 +130,15 @@ Sector::Sector(std::basic_istream<char> &s) {
         if(rpos != clen || wpos != data.size()) {
             std::stringstream ss;
             ss << "Decoding fail; rpos: " << std::hex << rpos <<
-            " clen: " << std::hex << clen <<
-            " wpos: " << std::hex << wpos <<
-            " data.size: " << std::hex << data.size();
+               " clen: " << std::hex << clen <<
+               " wpos: " << std::hex << wpos <<
+               " data.size: " << std::hex << data.size();
             throw FormatError(ss.str());
         }
         break;
     }
     }
-    if((CRC::calc((unsigned char*)data.data(),(unsigned char*)(data.data()+data.size())) & 0xff) != sh.crc)
+    if((CRC::calc((unsigned char *)data.data(),(unsigned char *)(data.data()+data.size())) & 0xff) != sh.crc)
         throw FormatError("CRC mismatch");
 }
 
@@ -238,7 +238,7 @@ void Sector::write(std::basic_ostream<char> &s, bool no_compress) {
     sh.idSector = chs.idSector;
     sh.idLengthCode = idLengthCode;
     sh.flags = flags;
-    sh.crc = CRC::calc((unsigned char*)data.data(),(unsigned char*)(data.data()+data.size())) & 0xff;
+    sh.crc = CRC::calc((unsigned char *)data.data(),(unsigned char *)(data.data()+data.size())) & 0xff;
     s.write((char *)&sh,sizeof sh);
 
     if(flags & NoDataMask) {
@@ -288,7 +288,7 @@ Track::Track(std::basic_istream<char> &s) {
     physSide = th.physSide;
     if(sectorCount == 255)
         return;
-    if((CRC::calc((unsigned char*)&th,(unsigned char*)&th.crc) & 0xff) != th.crc)
+    if((CRC::calc((unsigned char *)&th,(unsigned char *)&th.crc) & 0xff) != th.crc)
         throw FormatError("CRC mismatch");
 
     for(unsigned int i = 0; i < th.sectorCount; i++)
@@ -305,7 +305,7 @@ void Track::write(std::basic_ostream<char> &s, bool no_compress_sectors) {
     th.sectorCount = sectorCount;
     th.physCylinder = physCylinder;
     th.physSide = physSide;
-    th.crc = CRC::calc((unsigned char*)&th,(unsigned char*)&th.crc) & 0xff;
+    th.crc = CRC::calc((unsigned char *)&th,(unsigned char *)&th.crc) & 0xff;
     s.write((char *)&th,sizeof th);
     if(sectorCount == 255)
         return;
@@ -356,7 +356,7 @@ void Comment::write(std::basic_ostream<char> &s) {
     unsigned short crc = CRC::calc((unsigned char *)&ch.size,
                                    (unsigned char *)(&ch+1));
     ch.crc = CRC::calc((unsigned char *)comment.data(),
-                 (unsigned char *)(comment.data()+comment.size()), crc);
+                       (unsigned char *)(comment.data()+comment.size()), crc);
     s.write((char *)&ch,sizeof ch);
     s.write(comment.data(),comment.size());
 }
@@ -378,8 +378,7 @@ Disk::Disk()
       dosMode(false),
       mediaSurfaces(0),
       advancedCompression(false),
-      no_compress_sectors(false)
-{
+      no_compress_sectors(false) {
 }
 
 void Disk::readDiskMain(bool have_comment, std::basic_istream<char> &s) {
@@ -479,7 +478,7 @@ void Disk::writeDisk(std::basic_ostream<char> &s) {
     fh.mediaSurfaces = mediaSurfaces;
     if(comment)
         fh.trackDensity |= 0x80;
-    fh.crc = CRC::calc((unsigned char*)&fh,(unsigned char*)&fh.crc);
+    fh.crc = CRC::calc((unsigned char *)&fh,(unsigned char *)&fh.crc);
     s.write((char *)&fh,sizeof fh);
 
     if(advancedCompression) {

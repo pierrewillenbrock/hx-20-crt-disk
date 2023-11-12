@@ -15,7 +15,7 @@ std::string hx20ToUnixFilename(uint8_t const *src) {
     for(fp += 2; *fp == ' '; fp--) {}
     fp++;
     *fp = 0;
-    for (fp = dst; *fp; fp++) {
+    for(fp = dst; *fp; fp++) {
         *fp &= 0x7f;
     }
     return dst;

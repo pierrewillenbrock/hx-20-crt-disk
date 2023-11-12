@@ -23,7 +23,7 @@ public:
 protected:
     virtual void changeEvent(QEvent *event) override;
     virtual void resizeEvent(QResizeEvent *event) override;
-    virtual void paintEvent(QPaintEvent* event) override;
+    virtual void paintEvent(QPaintEvent *event) override;
 private:
     QDockWidget *m_lastDockWidget;
     QMetaObject::Connection m_floatConnection;

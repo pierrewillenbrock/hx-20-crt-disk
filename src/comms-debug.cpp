@@ -1912,7 +1912,7 @@ public:
             basePacket.decoded.push_back(dr);
             basePacket.info = text;
             //no further decodes.
-        } else if (loc.at(0) == SOH) {
+        } else if(loc.at(0) == SOH) {
             basePacket.title = "Header";
             DecodeResult dr;
             dr.name = "EPSP";
@@ -2069,7 +2069,7 @@ public:
             basePacket.decoded.push_back(dr);
             basePacket.info = text;
             //no further decodes.
-        } else if (loc.at(0) == STX) {
+        } else if(loc.at(0) == STX) {
             basePacket.title = "Data";
             DecodeResult dr;
             dr.name = "EPSP";
@@ -2171,7 +2171,7 @@ public:
                                         dataloc,
                                         md2);
             }
-        } else if (loc.at(0) == EOT) {
+        } else if(loc.at(0) == EOT) {
             basePacket.title = "End of Transmission/Reverse direction";
             DecodeResult dr;
             dr.name = "EPSP";
@@ -2191,7 +2191,7 @@ public:
             basePacket.decoded.push_back(dr);
             basePacket.info = text;
             //no further decodes.
-        } else if (loc.at(0) == ACK) {
+        } else if(loc.at(0) == ACK) {
             basePacket.title = "Acknowledge";
             DecodeResult dr;
             dr.name = "EPSP";
@@ -2211,7 +2211,7 @@ public:
             basePacket.decoded.push_back(dr);
             basePacket.info = text;
             //no further decodes.
-        } else if (loc.at(0) == NAK) {
+        } else if(loc.at(0) == NAK) {
             basePacket.title = "Negative Acknowledge";
             DecodeResult dr;
             dr.name = "EPSP";
@@ -2231,7 +2231,7 @@ public:
             basePacket.decoded.push_back(dr);
             basePacket.info = text;
             //no further decodes.
-        } else if (loc.at(0) == WAK) {
+        } else if(loc.at(0) == WAK) {
             basePacket.title = "Wait Acknowledge";
             DecodeResult dr;
             dr.name = "EPSP";
@@ -2528,7 +2528,7 @@ QVariant RawDecodeModel::headerData(int section, Qt::Orientation orientation, in
 QModelIndex RawDecodeModel::index(int row, int column, const QModelIndex &parent) const {
     if(!parent.isValid())
         return createIndex(row, column, quintptr(0xffffffff));
-    else if (parent.internalId() == 0xffffffff)
+    else if(parent.internalId() == 0xffffffff)
         return createIndex(row, column, quintptr(parent.row()));
     else
         return QModelIndex();
@@ -2558,8 +2558,7 @@ int RawDecodeModel::columnCount(const QModelIndex &parent) const {
 CommsDebugWindow::CommsDebugWindow(QWidget *parent, Qt::WindowFlags f)
     : QDockWidget(parent, f), conn(nullptr), scrollToNewest(true),
       packetlist(new QTreeView(this)), packetdecode(new QTreeView(this)),
-      rawdecode(new QTreeView(this)), rawDecoder(std::make_unique<RawDecoder>())
-{
+      rawdecode(new QTreeView(this)), rawDecoder(std::make_unique<RawDecoder>()) {
     QSplitter *w = new QSplitter(this);
     w->setOrientation(Qt::Orientation::Vertical);
     w->addWidget(packetlist);
@@ -2679,7 +2678,7 @@ CommsDebugWindow::CommsDebugWindow(QWidget *parent, Qt::WindowFlags f)
     });
 
     connect(insertTimer, &QTimer::timeout,
-            this, [this](){
+    this, [this]() {
         packetlistmodel->beforeAddPackets();
         for(auto &pi : insertpackets) {
             packets.push_back(pi);
