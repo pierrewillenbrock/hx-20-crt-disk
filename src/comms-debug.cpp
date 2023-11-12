@@ -110,6 +110,92 @@ static bool decodeUint16Hex(DecodeLocation &locptr, DecodeResult &dr, QString co
     return false;
 }
 
+struct BitDesc {
+    QString name;
+    uint8_t first_bit;
+    uint8_t num_bits;
+};
+
+static QString makeBitString(DecodeLocation &locptr,
+                             size_t size,
+                             uint8_t first_bit,
+                             uint8_t num_bits,
+                             bool lsbfirst = false) {
+    QString str = "0b";
+
+    for(int i = size-1; i >= 0; i--) {
+        uint8_t v = lsbfirst?locptr.at(size-1-i):
+                    locptr.at(i);
+        for(int bn = 7; bn >= 0; bn--) {
+            if(i*8+bn >= first_bit &&
+                    i*8+bn < first_bit+num_bits) {
+                if(v & 0x80)
+                    str += "1";
+                else
+                    str += "0";
+            } else {
+                str += "-";
+            }
+            v <<= 1;
+        }
+    }
+
+    return str;
+}
+
+static bool decodeBits(DecodeLocation &locptr,
+                       DecodeResult &dr,
+                       QString const &name,
+                       size_t size,
+                       std::vector<BitDesc> const &bits) {
+    if(locptr.size() >= size) {
+
+        DecodeResult dr2;
+        dr2.location = locptr;
+        dr2.location.end = dr2.location.begin+2;
+        dr2.name = name;
+        dr2.value = makeBitString(locptr, size,
+                                  0, size*8);
+
+        for(auto &b : bits) {
+            DecodeResult dr3;
+            dr3.location = dr2.location;
+            dr3.location.begin += b.first_bit/8;
+            dr3.location.end = dr3.location.begin +
+                               (b.first_bit-b.num_bits-1)/8;
+            dr3.name = b.name;
+            dr3.value = makeBitString(locptr, size,
+                                      b.first_bit,
+                                      b.num_bits);
+            dr2.subdecodes.push_back(dr3);
+        }
+
+        dr.subdecodes.push_back(dr2);
+
+        locptr.begin += size;
+        return true;
+    }
+    locptr.begin = locptr.end;
+    return false;
+}
+
+
+static bool decodeDrive(DecodeLocation &locptr, DecodeResult &dr) {
+    return decodeBits(locptr, dr, "Drive code", 1, {
+        {"Us match bits",5,3},
+        {"Drive",0,5},
+    });
+}
+
+static bool decodeExtent(DecodeLocation &locptr, DecodeResult &dr) {
+    return decodeBits(locptr, dr, "Extent", 1, {
+        {"Extent match bits",5,3},
+        {"Extent group",1,4},
+        {"Extent num",0,1}
+    });
+}
+
+
 static bool decodeAsciiArray(DecodeLocation &locptr, DecodeResult &dr, QString const &name, size_t size, uint8_t mask = 0xff) {
     if(locptr.size() >= size) {
         DecodeResult dr2;
@@ -125,6 +211,40 @@ static bool decodeAsciiArray(DecodeLocation &locptr, DecodeResult &dr, QString c
         return true;
     }
     locptr.begin = locptr.end;
+    return false;
+}
+
+static bool decodeFlags(DecodeLocation &locptr, DecodeResult &dr) {
+    if(locptr.size() >= 1) {
+        DecodeResult dr3;
+        dr3.location = locptr;
+        dr3.location.begin = dr3.location.begin+0;
+        dr3.location.end = dr3.location.begin+1;
+        dr3.name = "Read Only";
+        dr3.value = QString("0b%1... ...").
+                    arg((locptr.at(0) >> 7) & 1);
+        dr.subdecodes.push_back(dr3);
+    }
+    if(locptr.size() >= 1) {
+        DecodeResult dr3;
+        dr3.location = locptr;
+        dr3.location.begin = dr3.location.begin+1;
+        dr3.location.end = dr3.location.begin+1;
+        dr3.name = "System";
+        dr3.value = QString("0b%1... ...").
+                    arg((locptr.at(1) >> 7) & 1);
+        dr.subdecodes.push_back(dr3);
+    }
+    if(locptr.size() >= 1) {
+        DecodeResult dr3;
+        dr3.location = locptr;
+        dr3.location.begin = dr3.location.begin+2;
+        dr3.location.end = dr3.location.begin+1;
+        dr3.name = "Unused";
+        dr3.value = QString("0b%1... ...").
+                    arg((locptr.at(2) >> 7) & 1);
+        dr.subdecodes.push_back(dr3);
+    }
     return false;
 }
 
@@ -160,8 +280,8 @@ public:
         dr.location = loc;
         auto locptr = loc;
         switch(fnc) {
-        case 0x0e: { //reset
-            dr.value = "Reset";
+        case 0x00: { //system reset
+            dr.value = "System Reset";
             if(basePacket.dir == RawDecodePacketInfo::SlaveToMaster) {
                 if(!decodeUint8Hex(locptr, dr, "Result")) {
                     DecodeResult dr2;
@@ -170,7 +290,37 @@ public:
                     dr.subdecodes.push_back(dr2);
                 }
             }
-            basePacket.info = dr.name + ": Reset";
+            basePacket.info = dr.name + ": System Reset";
+            break;
+        }
+        case 0x0d: { //drive reset
+            dr.value = "All drive reset";
+            if(basePacket.dir == RawDecodePacketInfo::SlaveToMaster) {
+                if(!decodeUint8Hex(locptr, dr, "Result")) {
+                    DecodeResult dr2;
+                    dr2.location = loc;
+                    dr2.name = "Incomplete";
+                    dr.subdecodes.push_back(dr2);
+                }
+            }
+            basePacket.info = dr.name + ": All drive reset";
+            break;
+        }
+        case 0x0e: { //drive select
+            dr.value = "Drive select";
+            if(basePacket.dir == RawDecodePacketInfo::MasterToSlave) {
+                if(locptr.size() >= 1)
+                    dr.name = QString("Disk Drive %1:").arg(QChar('A' + 2*(did-0x31) + locptr.at(0)-1));
+                decodeUint8(locptr, dr, "Drive Code");
+            } else {
+                if(!decodeUint8Hex(locptr, dr, "Result")) {
+                    DecodeResult dr2;
+                    dr2.location = loc;
+                    dr2.name = "Incomplete";
+                    dr.subdecodes.push_back(dr2);
+                }
+            }
+            basePacket.info = dr.name + ": Drive select";
             break;
         }
         case 0x0f: //file open
@@ -184,11 +334,13 @@ public:
                     dr.name = QString("Disk Drive %1:").arg(QChar('A' + 2*(did-0x31) + locptr.at(2)-1));
 
                 decodeUint16Hex(locptr, dr, "Master FCB Address");
-                decodeUint8(locptr, dr, "Drive Code");
-                decodeAsciiArray(locptr, dr, "File Name", 8);
+                decodeDrive(locptr, dr);
+                decodeAsciiArray(locptr, dr, "File Name", 8, 0x7f);
+                DecodeLocation flagloc = locptr;
                 decodeAsciiArray(locptr, dr, "File Type", 3, 0x7f);
+                decodeFlags(flagloc, dr);
 
-                if(!decodeUint8(locptr, dr, "Extent")) {
+                if(!decodeExtent(locptr, dr)) {
                     DecodeResult dr2;
                     dr2.location = loc;
                     dr2.name = "Incomplete";
@@ -231,11 +383,13 @@ public:
                 if(locptr.size() >= 1)
                     dr.name = QString("Disk Drive %1:").arg(QChar('A' + 2*(did-0x31) + locptr.at(0)-1));
 
-                decodeUint8(locptr, dr, "Drive Code");
+                decodeDrive(locptr, dr);
                 decodeAsciiArray(locptr, dr, "File Name Pattern", 8);
+                DecodeLocation flagloc = locptr;
                 decodeAsciiArray(locptr, dr, "File Type Pattern", 3, 0x7f);
+                decodeFlags(flagloc, dr);
 
-                if(!decodeUint8(locptr, dr, "Extent")) {
+                if(!decodeExtent(locptr, dr)) {
                     DecodeResult dr2;
                     dr2.location = loc;
                     dr2.name = "Incomplete";
@@ -250,60 +404,23 @@ public:
                 if(dr2.location.end > dr2.location.begin + 32)
                     dr2.location.end = dr2.location.begin + 32;
                 decodeUint8Hex(locptr, dr2, "Valid");
-                decodeAsciiArray(locptr, dr2, "File Name", 8);
-                if(locptr.size() >= 1) {
-                    DecodeResult dr3;
-                    dr3.location = locptr;
-                    dr3.location.begin = dr3.location.begin+0;
-                    dr3.location.end = dr3.location.begin+1;
-                    dr3.name = "Read Only";
-                    dr3.value = QString("%1... ...").
-                                arg((locptr.at(0) >> 7) & 1);
-                    dr2.subdecodes.push_back(dr3);
-                }
-                if(locptr.size() >= 2) {
-                    DecodeResult dr3;
-                    dr3.location = locptr;
-                    dr3.location.begin = dr3.location.begin+1;
-                    dr3.location.end = dr3.location.begin+1;
-                    dr3.name = "System";
-                    dr3.value = QString("%1... ...").
-                                arg((locptr.at(1) >> 7) & 1);
-                    dr2.subdecodes.push_back(dr3);
-                }
-                if(locptr.size() >= 3) {
-                    DecodeResult dr3;
-                    dr3.location = locptr;
-                    dr3.location.begin = dr3.location.begin+2;
-                    dr3.location.end = dr3.location.begin+1;
-                    dr3.name = "Unused";
-                    dr3.value = QString("%1... ...").
-                                arg((locptr.at(2) >> 7) & 1);
-                    dr2.subdecodes.push_back(dr3);
-                }
+                decodeAsciiArray(locptr, dr2, "File Name", 8, 0x7f);
+                DecodeLocation flagloc = locptr;
                 decodeAsciiArray(locptr, dr2, "File Type", 3, 0x7f);
-                uint8_t extent_code = 0;
-                if(locptr.size() >= 1) {
-                    DecodeResult dr3;
-                    dr3.location = locptr;
-                    dr3.location.end = dr3.location.begin+1;
-                    dr3.name = "Extent";
-                    extent_code = locptr.at(0);
-                    dr3.value = QString("0x%1").
-                                arg((locptr.at(0) >> 1) & 0x7f, 2, 16, QChar('0'));
-                    dr2.subdecodes.push_back(dr3);
-                    locptr.begin++;
-                }
+                decodeFlags(flagloc, dr2);
+                decodeExtent(locptr, dr2);
                 decodeUint8Hex(locptr, dr2, "Unused");
-                decodeUint8Hex(locptr, dr2, "Unused");
+                decodeBits(locptr, dr2, "Extent high", 1, {
+                    {"Unused",4,4},
+                    {"Extent group high bits", 0, 4}
+                });
                 if(locptr.size() >= 1) {
                     DecodeResult dr3;
                     dr3.location = locptr;
                     dr3.location.end = dr3.location.begin+1;
                     dr3.name = "Records";
-                    extent_code = locptr.at(0);
                     dr3.value = QString("%1").
-                                arg(locptr.at(0) + 0x80 * (extent_code & 1));
+                                arg(locptr.at(0));
                     dr2.subdecodes.push_back(dr3);
                     locptr.begin++;
                 }
@@ -349,60 +466,23 @@ public:
                 if(dr2.location.end > dr2.location.begin + 32)
                     dr2.location.end = dr2.location.begin + 32;
                 decodeUint8Hex(locptr, dr2, "Valid");
-                decodeAsciiArray(locptr, dr2, "File Name", 8);
-                if(locptr.size() >= 1) {
-                    DecodeResult dr3;
-                    dr3.location = locptr;
-                    dr3.location.begin = dr3.location.begin+0;
-                    dr3.location.end = dr3.location.begin+1;
-                    dr3.name = "Read Only";
-                    dr3.value = QString("%1... ...").
-                                arg((locptr.at(0) >> 7) & 1);
-                    dr2.subdecodes.push_back(dr3);
-                }
-                if(locptr.size() >= 2) {
-                    DecodeResult dr3;
-                    dr3.location = locptr;
-                    dr3.location.begin = dr3.location.begin+1;
-                    dr3.location.end = dr3.location.begin+1;
-                    dr3.name = "System";
-                    dr3.value = QString("%1... ...").
-                                arg((locptr.at(1) >> 7) & 1);
-                    dr2.subdecodes.push_back(dr3);
-                }
-                if(locptr.size() >= 3) {
-                    DecodeResult dr3;
-                    dr3.location = locptr;
-                    dr3.location.begin = dr3.location.begin+2;
-                    dr3.location.end = dr3.location.begin+1;
-                    dr3.name = "Unused";
-                    dr3.value = QString("%1... ...").
-                                arg((locptr.at(2) >> 7) & 1);
-                    dr2.subdecodes.push_back(dr3);
-                }
+                decodeAsciiArray(locptr, dr2, "File Name", 8, 0x7f);
+                DecodeLocation flagloc = locptr;
                 decodeAsciiArray(locptr, dr2, "File Type", 3, 0x7f);
-                uint8_t extent_code = 0;
-                if(locptr.size() >= 1) {
-                    DecodeResult dr3;
-                    dr3.location = locptr;
-                    dr3.location.end = dr3.location.begin+1;
-                    dr3.name = "Extent";
-                    extent_code = locptr.at(0);
-                    dr3.value = QString("0x%1").
-                                arg((locptr.at(0) >> 1) & 0x7f, 2, 16, QChar('0'));
-                    dr2.subdecodes.push_back(dr3);
-                    locptr.begin++;
-                }
+                decodeFlags(flagloc, dr2);
+                decodeExtent(locptr, dr2);
                 decodeUint8Hex(locptr, dr2, "Unused");
-                decodeUint8Hex(locptr, dr2, "Unused");
+                decodeBits(locptr, dr2, "Extent high", 1, {
+                    {"Unused",4,4},
+                    {"Extent group high bits", 0, 4}
+                });
                 if(locptr.size() >= 1) {
                     DecodeResult dr3;
                     dr3.location = locptr;
                     dr3.location.end = dr3.location.begin+1;
                     dr3.name = "Records";
-                    extent_code = locptr.at(0);
                     dr3.value = QString("%1").
-                                arg(locptr.at(0) + 0x80 * (extent_code & 1));
+                                arg(locptr.at(0));
                     dr2.subdecodes.push_back(dr3);
                     locptr.begin++;
                 }
@@ -436,11 +516,12 @@ public:
                 if(locptr.size() >= 1)
                     dr.name = QString("Disk Drive %1:").arg(QChar('A' + 2*(did-0x31) + locptr.at(0)-1));
 
-                decodeUint8(locptr, dr, "Drive Code");
-                decodeAsciiArray(locptr, dr, "File Name", 8);
+                decodeDrive(locptr, dr);
+                decodeAsciiArray(locptr, dr, "File Name", 8, 0x7f);
+                DecodeLocation flagloc = locptr;
                 decodeAsciiArray(locptr, dr, "File Type", 3, 0x7f);
-
-                if(!decodeUint8(locptr, dr, "Extent")) {
+                decodeFlags(flagloc, dr);
+                if(!decodeExtent(locptr, dr)) {
                     DecodeResult dr2;
                     dr2.location = loc;
                     dr2.name = "Incomplete";
@@ -457,27 +538,164 @@ public:
             basePacket.info = dr.name + ": " + dr.value;
             break;
         }
+        case 0x14: {
+            dr.value = "File Read Extent and Record";
+            if(basePacket.dir == RawDecodePacketInfo::MasterToSlave) {
+                decodeUint16Hex(locptr, dr, "Master FCB Address");
+                decodeUint8Hex(locptr, dr, "Extent");
+                if(!decodeUint8(locptr, dr, "Record")) {
+                    locptr.begin = locptr.end;
+                    DecodeResult dr2;
+                    dr2.location = loc;
+                    dr2.name = "Incomplete";
+                    dr.subdecodes.push_back(dr2);
+                }
+            } else {
+                decodeExtent(locptr, dr);
+                decodeUint8(locptr, dr, "Record");
+                if(locptr.size() > 0) { //0x02
+                    DecodeResult dr2;
+                    dr2.location = locptr;
+                    if(dr2.location.end > dr2.location.begin+128)
+                        dr2.location.end = dr2.location.begin+128;
+                    dr2.name = "Data";
+                    dr.subdecodes.push_back(dr2);
+                    if(locptr.end >= locptr.begin + 128) {
+                        locptr.begin += 128;
+                    } else  {
+                        locptr.begin = locptr.end;
+                        DecodeResult dr2;
+                        dr2.location = loc;
+                        dr2.name = "Incomplete";
+                        dr.subdecodes.push_back(dr2);
+                    }
+                } else  {
+                    locptr.begin = locptr.end;
+                    DecodeResult dr2;
+                    dr2.location = loc;
+                    dr2.name = "Incomplete";
+                    dr.subdecodes.push_back(dr2);
+                }
+                decodeUint8Indexed(locptr, dr, "Result", bdos_result_map); //0x82
+            }
+            basePacket.info = dr.name + ": " + dr.value;
+            break;
+        }
+        case 0x15: { //write record to file
+            dr.value = "File Write Extent and Record";
+            if(basePacket.dir == RawDecodePacketInfo::MasterToSlave) {
+                decodeUint16Hex(locptr, dr, "Master FCB Address");
+                decodeUint8Hex(locptr, dr, "Extent");
+                decodeUint8(locptr, dr, "Record");
+                if(locptr.size() > 0) {
+                    DecodeResult dr2;
+                    dr2.location = locptr;
+                    if(dr2.location.end > dr2.location.begin+128)
+                        dr2.location.end = dr2.location.begin+128;
+                    dr2.name = "Data";
+                    dr.subdecodes.push_back(dr2);
+                    if(locptr.end >= locptr.begin + 128) {
+                        locptr.begin += 128;
+                    } else  {
+                        locptr.begin = locptr.end;
+                        DecodeResult dr2;
+                        dr2.location = loc;
+                        dr2.name = "Incomplete";
+                        dr.subdecodes.push_back(dr2);
+                    }
+                } else  {
+                    locptr.begin = locptr.end;
+                    DecodeResult dr2;
+                    dr2.location = loc;
+                    dr2.name = "Incomplete";
+                    dr.subdecodes.push_back(dr2);
+                }
+            } else {
+                decodeExtent(locptr, dr);
+                decodeUint8(locptr, dr, "Record");
+                if(!decodeUint8Indexed(locptr, dr, "Result", bdos_result_map)) { //0x02
+                    DecodeResult dr2;
+                    dr2.location = loc;
+                    dr2.name = "Incomplete";
+                    dr.subdecodes.push_back(dr2);
+                }
+            }
+            basePacket.info = dr.name + ": " + dr.value;
+            break;
+        }
         case 0x17: { //file rename
             dr.value = "File Rename";
             if(basePacket.dir == RawDecodePacketInfo::MasterToSlave) {
                 if(locptr.size() >= 1)
                     dr.name = QString("Disk Drive %1:").arg(QChar('A' + 2*(did-0x31) + locptr.at(0)-1));
 
-                decodeUint8(locptr, dr, "Drive Code"); //0x00
-                decodeAsciiArray(locptr, dr, "Old File Name", 8); // 0x01-0x08
+                decodeBits(locptr, dr, "Drive code", 1, {
+                    {"Old us match bits",5,3},
+                    {"Drive",0,5},
+                });// 0x00
+                decodeAsciiArray(locptr, dr, "Old File Name", 8, 0x7f); // 0x01-0x08
+                DecodeLocation flagloc = locptr;
                 decodeAsciiArray(locptr, dr, "Old File Type", 3, 0x7f); //0x09-0x0b
-                decodeUint8(locptr, dr, "Old Extent"); //0x0c
+                decodeFlags(flagloc, dr);//0x09-0x0b
+                decodeBits(locptr, dr, "Old Extent", 1, {
+                    {"Extent match bits",5,3},
+                    {"Extent group",1,4},
+                    {"Extent num",0,1}
+                });//0x0c
+
                 decodeUint8Hex(locptr, dr, "Unused"); //0x0d
                 decodeUint8Hex(locptr, dr, "Unused"); //0x0e
                 decodeUint8Hex(locptr, dr, "Unused"); //0x0f
-                decodeUint8Hex(locptr, dr, "Drive Code"); //0x10
-                decodeAsciiArray(locptr, dr, "New File Name", 8); // 0x11-0x18
-                decodeAsciiArray(locptr, dr, "New File Type", 3, 0x7f); //0x19-0x1b
-                decodeUint8(locptr, dr, "New Extent"); //0x1c
+                decodeBits(locptr, dr, "Drive code", 1, {
+                    {"New us match bits",5,3},
+                    {"Unused",0,5},
+                }); //0x10
+                decodeAsciiArray(locptr, dr, "New File Name", 8, 0x7f); // 0x11-0x18
+                flagloc = locptr;
+                decodeAsciiArray(locptr, dr, "New File Type", 3, 0x7f); // 0x19-0x1b
+                decodeFlags(flagloc, dr);// 0x19-0x1b
+                decodeBits(locptr, dr, "New Extent", 1, {
+                    {"Extent match bits",5,3},
+                    {"Extent group",1,4},
+                    {"Extent num",0,1}
+                });// 0x1c
                 decodeUint8Hex(locptr, dr, "Unused"); //0x1d
                 decodeUint8Hex(locptr, dr, "Unused"); //0x1e
 
                 if(!decodeUint8Hex(locptr, dr, "Unused")) { //0x1f
+                    DecodeResult dr2;
+                    dr2.location = loc;
+                    dr2.name = "Incomplete";
+                    dr.subdecodes.push_back(dr2);
+                }
+            } else {
+                if(!decodeUint8Indexed(locptr, dr, "Result", bdos_result_map)) {
+                    DecodeResult dr2;
+                    dr2.location = loc;
+                    dr2.name = "Incomplete";
+                    dr.subdecodes.push_back(dr2);
+                }
+            }
+            basePacket.info = dr.name + ": " + dr.value;
+            break;
+        }
+        case 0x1c: { //set write protect
+            dr.value = "Set write protect";
+            if(basePacket.dir == RawDecodePacketInfo::SlaveToMaster) {
+                if(!decodeUint8Indexed(locptr, dr, "Result", bdos_result_map)) {
+                    DecodeResult dr2;
+                    dr2.location = loc;
+                    dr2.name = "Incomplete";
+                    dr.subdecodes.push_back(dr2);
+                }
+            }
+            basePacket.info = dr.name + ": " + dr.value;
+            break;
+        }
+        case 0x20: { //set user num
+            dr.value = "Set write protect";
+            if(basePacket.dir == RawDecodePacketInfo::MasterToSlave) {
+                if(!decodeUint8(locptr, dr, "User")) {
                     DecodeResult dr2;
                     dr2.location = loc;
                     dr2.name = "Incomplete";
@@ -514,40 +732,8 @@ public:
                     dr.subdecodes.push_back(dr2);
                 }
             } else {
-                if(locptr.size() >= 1) {
-                    DecodeResult dr2;
-                    dr2.location = locptr;
-                    dr2.location.end = dr2.location.begin+1;
-                    dr2.name = "Extent";
-                    dr2.value = QString("0x%1").
-                                arg(locptr.at(0), 2, 16, QChar('0'));
-                    DecodeResult dr3;
-                    dr3.location = dr2.location;
-                    dr3.name = "Extent match bits";
-                    dr3.value = QString("0x%1").
-                                arg((locptr.at(0) & 0xe0) >> 5, 1, 16, QChar('0'));
-                    dr2.subdecodes.push_back(dr3);
-                    dr3.name = "Extent group number";
-                    dr3.value = QString("0x%1").
-                                arg((locptr.at(0) & 0x1e) >> 1, 1, 16, QChar('0'));
-                    dr2.subdecodes.push_back(dr3);
-                    dr3.name = "Extent number(counts 8 blocks)";
-                    dr3.value = QString("0x%1").
-                                arg((locptr.at(0) & 0x01), 1, 16, QChar('0'));
-                    dr2.subdecodes.push_back(dr3);
-                    dr.subdecodes.push_back(dr2);
-                    locptr.begin++;
-                }
-                if(locptr.size() >= 1) {
-                    DecodeResult dr2;
-                    dr2.location = locptr;
-                    dr2.location.end = dr2.location.begin+1;
-                    dr2.name = "Records";
-                    dr2.value = QString("%1").
-                                arg(locptr.at(0));
-                    dr.subdecodes.push_back(dr2);
-                    locptr.begin++;
-                }
+                decodeExtent(locptr, dr);
+                decodeUint8(locptr, dr, "Records");
                 if(locptr.size() > 0) { //0x02
                     DecodeResult dr2;
                     dr2.location = locptr;
@@ -555,7 +741,7 @@ public:
                         dr2.location.end = dr2.location.begin+128;
                     dr2.name = "Data";
                     dr.subdecodes.push_back(dr2);
-                    if(locptr.end > locptr.begin + 128) {
+                    if(locptr.end >= locptr.begin + 128) {
                         locptr.begin += 128;
                     } else  {
                         locptr.begin = locptr.end;
@@ -576,29 +762,25 @@ public:
             basePacket.info = dr.name + ": " + dr.value;
             break;
         }
+        case 0x28:
         case 0x22: { //write record to file
-            dr.value = "File Write Record";
+            if(fnc == 0x22)
+                dr.value = "File Write Record";
+            else
+                dr.value = "File Write Zeros";
             if(basePacket.dir == RawDecodePacketInfo::MasterToSlave) {
                 decodeUint16Hex(locptr, dr, "Master FCB Address");
-                if(locptr.size() >= 3) {
-                    DecodeResult dr2;
-                    dr2.location = locptr;
-                    dr2.location.end = dr2.location.begin+3;
-                    dr2.name = "Record";
-                    dr2.value = QString("%1").arg((locptr.at(2) << 16) | (locptr.at(1) << 8) | locptr.at(0));
-                    dr.subdecodes.push_back(dr2);
-                    locptr.begin += 3;
-                } else {
-                    locptr.begin = locptr.end;
-                }
                 if(locptr.size() > 0) {
                     DecodeResult dr2;
                     dr2.location = locptr;
                     if(dr2.location.end > dr2.location.begin+128)
                         dr2.location.end = dr2.location.begin+128;
-                    dr2.name = "Data";
+                    if(fnc == 0x22)
+                        dr2.name = "Data";
+                    else
+                        dr2.name = "Unused";
                     dr.subdecodes.push_back(dr2);
-                    if(locptr.end > locptr.begin + 128) {
+                    if(locptr.end >= locptr.begin + 128) {
                         locptr.begin += 128;
                     } else  {
                         locptr.begin = locptr.end;
@@ -614,41 +796,20 @@ public:
                     dr2.name = "Incomplete";
                     dr.subdecodes.push_back(dr2);
                 }
+                if(locptr.size() >= 3) {
+                    DecodeResult dr2;
+                    dr2.location = locptr;
+                    dr2.location.end = dr2.location.begin+3;
+                    dr2.name = "Record";
+                    dr2.value = QString("%1").arg((locptr.at(2) << 16) | (locptr.at(1) << 8) | locptr.at(0));
+                    dr.subdecodes.push_back(dr2);
+                    locptr.begin += 3;
+                } else {
+                    locptr.begin = locptr.end;
+                }
             } else {
-                if(locptr.size() >= 1) {
-                    DecodeResult dr2;
-                    dr2.location = locptr;
-                    dr2.location.end = dr2.location.begin+1;
-                    dr2.name = "Extent";
-                    dr2.value = QString("0x%1").
-                                arg(locptr.at(0), 2, 16, QChar('0'));
-                    DecodeResult dr3;
-                    dr3.location = dr2.location;
-                    dr3.name = "Extent match bits";
-                    dr3.value = QString("0x%1").
-                                arg((locptr.at(0) & 0xe0) >> 5, 1, 16, QChar('0'));
-                    dr2.subdecodes.push_back(dr3);
-                    dr3.name = "Extent group number";
-                    dr3.value = QString("0x%1").
-                                arg((locptr.at(0) & 0x1e) >> 1, 1, 16, QChar('0'));
-                    dr2.subdecodes.push_back(dr3);
-                    dr3.name = "Extent number(counts 8 blocks)";
-                    dr3.value = QString("0x%1").
-                                arg((locptr.at(0) & 0x01), 1, 16, QChar('0'));
-                    dr2.subdecodes.push_back(dr3);
-                    dr.subdecodes.push_back(dr2);
-                    locptr.begin++;
-                }
-                if(locptr.size() >= 1) {
-                    DecodeResult dr2;
-                    dr2.location = locptr;
-                    dr2.location.end = dr2.location.begin+1;
-                    dr2.name = "Records";
-                    dr2.value = QString("%1").
-                                arg(locptr.at(0));
-                    dr.subdecodes.push_back(dr2);
-                    locptr.begin++;
-                }
+                decodeExtent(locptr, dr);
+                decodeUint8(locptr, dr, "Records");
                 if(!decodeUint8Indexed(locptr, dr, "Result", bdos_result_map)) { //0x02
                     DecodeResult dr2;
                     dr2.location = loc;
@@ -670,35 +831,13 @@ public:
                     dr.subdecodes.push_back(dr2);
                 }
             } else {
-                uint8_t extent_code = 0;
-                if(locptr.size() >= 1) {
-                    DecodeResult dr2;
-                    dr2.location = locptr;
-                    dr2.location.end = dr2.location.begin+1;
-                    dr2.name = "Extent";
-                    extent_code = locptr.at(0);
-                    dr2.value = QString("0x%1").
-                                arg((locptr.at(0) >> 1) & 0x7f, 2, 16, QChar('0'));
-                    dr.subdecodes.push_back(dr2);
-                    locptr.begin++;
-                }
-                if(locptr.size() >= 1) {
-                    DecodeResult dr2;
-                    dr2.location = locptr;
-                    dr2.location.end = dr2.location.begin+1;
-                    dr2.name = "Records";
-                    extent_code = locptr.at(0);
-                    dr2.value = QString("%1").
-                                arg(locptr.at(0) + 0x80 * (extent_code & 1));
-                    dr.subdecodes.push_back(dr2);
-                    locptr.begin++;
-                }
+                decodeExtent(locptr, dr);
+                decodeUint8(locptr, dr, "Records");
                 if(locptr.size() >= 3) {
                     DecodeResult dr2;
                     dr2.location = locptr;
                     dr2.location.end = dr2.location.begin+3;
-                    dr2.name = "Records";
-                    extent_code = locptr.at(0);
+                    dr2.name = "Record count";
                     dr2.value = QString("%1").
                                 arg((locptr.at(2) << 16) | (locptr.at(1) << 8) | locptr.at(0));
                     dr.subdecodes.push_back(dr2);
@@ -715,6 +854,66 @@ public:
                 }
             }
             basePacket.info = dr.name + ": " + dr.value;
+            break;
+        }
+        case 0x24: { //file tell
+            dr.value = "File position";
+            if(basePacket.dir == RawDecodePacketInfo::MasterToSlave) {
+                if(!decodeUint16Hex(locptr, dr, "Master FCB Address")) {
+                    locptr.begin = locptr.end;
+                    DecodeResult dr2;
+                    dr2.location = loc;
+                    dr2.name = "Incomplete";
+                    dr.subdecodes.push_back(dr2);
+                }
+            } else {
+                if(locptr.size() >= 3) {
+                    DecodeResult dr2;
+                    dr2.location = locptr;
+                    dr2.location.end = dr2.location.begin+3;
+                    dr2.name = "Records position";
+                    dr2.value = QString("%1").
+                                arg((locptr.at(2) << 16) | (locptr.at(1) << 8) | locptr.at(0));
+                    dr.subdecodes.push_back(dr2);
+                    locptr.begin += 3;
+                } else {
+                    locptr.begin = locptr.end;
+                }
+                if(!decodeUint8Indexed(locptr, dr, "Result", bdos_result_map)) {
+                    locptr.begin = locptr.end;
+                    DecodeResult dr2;
+                    dr2.location = loc;
+                    dr2.name = "Incomplete";
+                    dr.subdecodes.push_back(dr2);
+                }
+            }
+            basePacket.info = dr.name + ": " + dr.value;
+            break;
+        }
+        case 0x27: { //clear all file handles
+            dr.value = "Clear file handles";
+            if(basePacket.dir == RawDecodePacketInfo::SlaveToMaster) {
+                if(!decodeUint8Hex(locptr, dr, "Result")) {
+                    DecodeResult dr2;
+                    dr2.location = loc;
+                    dr2.name = "Incomplete";
+                    dr.subdecodes.push_back(dr2);
+                }
+            }
+            basePacket.info = dr.name + ": System Reset";
+            break;
+        }
+        case 0x79: { //flush HXBIOS sector cache
+            dr.value = "Flush HXBIOS sector cache";
+            if(basePacket.dir == RawDecodePacketInfo::SlaveToMaster) {
+                if(!decodeUint8Hex(locptr, dr, "Result")) {
+                    DecodeResult dr2;
+                    dr2.location = loc;
+                    dr2.name = "Incomplete";
+                    dr.subdecodes.push_back(dr2);
+                }
+            }
+            basePacket.info = dr.name + ": System Reset";
             break;
         }
         case 0x7a: { // disk all copy
@@ -742,8 +941,13 @@ public:
             basePacket.info = dr.name + ": Disk copy";
             break;
         }
+        case 0x78:
         case 0x7b: { //direct write
-            dr.value = "Disk Write";
+            dr.value = "Disk Write ";
+            if(fnc == 0x78)
+                dr.value += " HXBIOS";
+            else
+                dr.value += " BDOS";
             if(basePacket.dir == RawDecodePacketInfo::MasterToSlave) {
                 if(locptr.size() >= 1) {
                     dr.name = QString("Disk Drive %1:").arg(QChar('A' + 2*(did-0x31) + locptr.at(0)-1));
@@ -852,8 +1056,13 @@ public:
             basePacket.info = dr.name + ": " + dr.value;
             break;
         }
+        case 0x77:
         case 0x7f: { //direct read
-            dr.value = "Disk Read";
+            dr.value = "Disk Read ";
+            if(fnc == 0x77)
+                dr.value += " HXBIOS";
+            else
+                dr.value += " BDOS";
             if(basePacket.dir == RawDecodePacketInfo::MasterToSlave) {
                 if(locptr.size() >= 1)
                     dr.name = QString("Disk Drive %1:").arg(QChar('A' + 2*(did-0x31) + locptr.at(0)-1));
@@ -916,7 +1125,7 @@ public:
         case 0x81: { //load open
             dr.value = "Load Open";
             if(basePacket.dir == RawDecodePacketInfo::MasterToSlave) {
-                decodeAsciiArray(locptr, dr, "File Name", 8);
+                decodeAsciiArray(locptr, dr, "File Name", 8, 0x7f);
                 decodeAsciiArray(locptr, dr, "File Type", 3, 0x7f);
 
                 decodeUint8Indexed(locptr, dr, "Relocation Type", {
@@ -933,19 +1142,6 @@ public:
             } else {
                 decodeUint8Indexed(locptr, dr, "Result", bdos_result_map);
                 if(!decodeUint16Hex(locptr, dr, "Code Size")) {
-                    DecodeResult dr2;
-                    dr2.location = loc;
-                    dr2.name = "Incomplete";
-                    dr.subdecodes.push_back(dr2);
-                }
-            }
-            basePacket.info = dr.name + ": " + dr.value;
-            break;
-        }
-        case 0x82: { //load close
-            dr.value = "Load Close";
-            if(basePacket.dir == RawDecodePacketInfo::SlaveToMaster) {
-                if(!decodeUint8Indexed(locptr, dr, "Result", bdos_result_map)) {
                     DecodeResult dr2;
                     dr2.location = loc;
                     dr2.name = "Incomplete";
